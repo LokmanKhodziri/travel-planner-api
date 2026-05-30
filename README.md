@@ -4,8 +4,9 @@ Express backend for the Travel Planner app. Handles auth (Google/GitHub OAuth + 
 
 ## Setup
 
-1. Copy `.env.example` to `.env` and fill in values.
-2. Install and generate Prisma:
+1. Copy `.env.example` to `.env` and fill in values (including `DATABASE_URL`).
+2. Prisma 7 reads the DB URL from `prisma.config.ts` at the project root (not from `schema.prisma`).
+3. Install and generate Prisma:
    ```bash
    npm install
    npx prisma generate
