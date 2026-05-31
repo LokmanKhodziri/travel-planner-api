@@ -1,10 +1,23 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import passport from "passport";
 import { signToken } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
+import { githubOAuthEnabled, googleOAuthEnabled } from "../config/passport.js";
 
 const router = Router();
 const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:3000";
+
+function requireProvider(enabled: boolean, provider: string) {
+  return (_req: Request, res: Response, next: NextFunction) => {
+    if (!enabled) {
+      res.status(503).json({
+        error: `${provider} OAuth is not configured. Add client ID and secret to the API .env file.`,
+      });
+      return;
+    }
+    next();
+  };
+}
 
 // Serialize user for session (used by Passport in OAuth flow only; we use JWT after)
 passport.serializeUser((user: { id: string }, done) => done(null, user.id));
@@ -20,6 +33,7 @@ passport.deserializeUser(async (id: string, done) => {
 // Google OAuth
 router.get(
   "/google",
+  requireProvider(googleOAuthEnabled, "Google"),
   passport.authenticate("google", { scope: ["profile", "email"] })
 );
 
@@ -39,6 +53,7 @@ router.get(
 // GitHub OAuth
 router.get(
   "/github",
+  requireProvider(githubOAuthEnabled, "GitHub"),
   passport.authenticate("github", { scope: ["user:email"] })
 );
 
