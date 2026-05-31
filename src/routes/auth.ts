@@ -75,4 +75,24 @@ router.post("/logout", (_, res) => {
   res.status(200).json({ ok: true });
 });
 
+// Dev helper: exact OAuth callback URLs to register in Google/GitHub consoles
+router.get("/setup", (_, res) => {
+  const apiUrl = process.env.API_URL ?? "http://localhost:4000";
+  res.json({
+    apiUrl,
+    frontendUrl: FRONTEND_URL,
+    google: {
+      enabled: googleOAuthEnabled,
+      registerRedirectUri: `${apiUrl}/auth/google/callback`,
+      startLoginUrl: `${apiUrl}/auth/google`,
+    },
+    github: {
+      enabled: githubOAuthEnabled,
+      registerCallbackUrl: `${apiUrl}/auth/github/callback`,
+      startLoginUrl: `${apiUrl}/auth/github`,
+    },
+    note: "Register the redirect/callback URLs exactly as shown (no trailing slash). Restart API after changing .env.",
+  });
+});
+
 export default router;
