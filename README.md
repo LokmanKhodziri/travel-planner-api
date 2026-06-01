@@ -31,7 +31,18 @@ Express backend for the Travel Planner app. Handles auth (Google/GitHub OAuth + 
 - `JWT_SECRET` – secret for signing JWTs
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` – Google OAuth
 - `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` – GitHub OAuth
-- `GOOGLE_MAPS_API_KEY` – optional, for geocoding
+- `GOOGLE_MAPS_API_KEY` – Geocoding + **Places API** (mosques, Halal)
+- `ALADHAN_API_BASE` – optional prayer times API base URL
+
+## Muslim-friendly API
+
+- `GET /api/trips/:tripId/prayer-times?date=YYYY-MM-DD`
+- `GET /api/trips/:tripId/nearby/mosques?radius=5000`
+- `GET /api/trips/:tripId/nearby/halal?radius=5000`
+- `GET /api/trips/:tripId/conflicts?date=YYYY-MM-DD`
+- `GET/POST/PATCH/DELETE /api/trips/:tripId/activities`
+
+See [../PROJECT_PLAN.md](../PROJECT_PLAN.md) for the 3-week development timeline.
 
 ## API
 

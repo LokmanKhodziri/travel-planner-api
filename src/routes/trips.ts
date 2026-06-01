@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { geocodeAddress } from "../services/geocode.js";
+import { syncTripDestinationFromLocation } from "../lib/trip-utils.js";
 
 const router = Router();
 
@@ -26,7 +27,10 @@ router.get("/:id", async (req: AuthRequest, res) => {
   try {
     const trip = await prisma.trip.findFirst({
       where: { id: req.params.id, userId: req.user!.id },
-      include: { locations: { orderBy: { order: "asc" } } },
+      include: {
+        locations: { orderBy: { order: "asc" } },
+        activities: { orderBy: { startTime: "asc" } },
+      },
     });
     if (!trip) {
       res.status(404).json({ error: "Trip not found" });
@@ -91,6 +95,7 @@ router.post("/:tripId/locations", async (req: AuthRequest, res) => {
         order: count,
       },
     });
+    await syncTripDestinationFromLocation(tripId, latitude, longitude, address);
     res.status(201).json(location);
   } catch (e) {
     console.error(e);
