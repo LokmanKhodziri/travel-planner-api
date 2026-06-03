@@ -1,8 +1,8 @@
 # Todo
 
-- [ ] Setup the project
-- [ ] Create the database
-- [ ] Create the API
+- [x] Setup the project
+- [x] Create the database
+- [x] Create the API
 - [ ] Create the UI
 
 # Done

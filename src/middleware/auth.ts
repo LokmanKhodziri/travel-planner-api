@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "change-me-in-production";
+export const SESSION_TIMEOUT_MINUTES = 10;
 
 export interface AuthUser {
   id: string;
@@ -28,16 +29,27 @@ export function verifyToken(token: string): { sub: string } | null {
   }
 }
 
+export function getTokenFromRequest(req: Request): string | null {
+  return (
+    (req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.slice(7)
+      : null) ??
+    (req.cookies?.jwt as string | undefined) ??
+    null
+  );
+}
+
+export function getSessionExpiration(): Date {
+  return new Date(Date.now() + SESSION_TIMEOUT_MINUTES * 60_000);
+}
+
 /** Attach user to request from Authorization: Bearer <token> or cookie jwt= */
 export async function requireAuth(
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> {
-  const token =
-    (req.headers.authorization?.startsWith("Bearer ")
-      ? req.headers.authorization.slice(7)
-      : null) ?? (req.cookies?.jwt as string | undefined);
+  const token = getTokenFromRequest(req);
 
   if (!token) {
     res.status(401).json({ error: "Unauthorized" });
@@ -50,20 +62,43 @@ export async function requireAuth(
     return;
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: payload.sub },
-    select: { id: true, email: true, name: true, image: true },
+  const session = await prisma.session.findUnique({
+    where: { sessionToken: token },
+    include: {
+      user: {
+        select: { id: true, email: true, name: true, image: true },
+      },
+    },
   });
-  if (!user) {
-    res.status(401).json({ error: "User not found" });
+
+  if (!session || !session.user) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
+  if (session.expires <= new Date()) {
+    await prisma.session
+      .delete({ where: { sessionToken: token } })
+      .catch(() => undefined);
+    res.status(401).json({ error: "Session expired" });
+    return;
+  }
+
+  if (session.user.id !== payload.sub) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  await prisma.session.update({
+    where: { sessionToken: token },
+    data: { expires: getSessionExpiration() },
+  });
+
   req.user = {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    image: user.image,
+    id: session.user.id,
+    email: session.user.email,
+    name: session.user.name,
+    image: session.user.image,
   };
   next();
 }
