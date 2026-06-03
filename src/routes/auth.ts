@@ -1,6 +1,15 @@
-import { Router, type Request, type Response, type NextFunction } from "express";
+import {
+  Router,
+  type Request,
+  type Response,
+  type NextFunction,
+} from "express";
 import passport from "passport";
-import { signToken } from "../middleware/auth.js";
+import {
+  getTokenFromRequest,
+  getSessionExpiration,
+  signToken,
+} from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { githubOAuthEnabled, googleOAuthEnabled } from "../config/passport.js";
 
@@ -34,44 +43,74 @@ passport.deserializeUser(async (id: string, done) => {
 router.get(
   "/google",
   requireProvider(googleOAuthEnabled, "Google"),
-  passport.authenticate("google", { scope: ["profile", "email"] })
+  passport.authenticate("google", { scope: ["profile", "email"] }),
 );
 
 router.get(
   "/google/callback",
-  passport.authenticate("google", { session: false, failureRedirect: `${FRONTEND_URL}/login?error=google` }),
-  (req: Request & { user?: { id: string } }, res) => {
+  passport.authenticate("google", {
+    session: false,
+    failureRedirect: `${FRONTEND_URL}/login?error=google`,
+  }),
+  async (req: Request & { user?: { id: string } }, res) => {
     if (!req.user?.id) {
       res.redirect(`${FRONTEND_URL}/login?error=no-user`);
       return;
     }
     const token = signToken(req.user.id);
-    res.redirect(`${FRONTEND_URL}/auth/callback?token=${encodeURIComponent(token)}`);
-  }
+    await prisma.session.create({
+      data: {
+        sessionToken: token,
+        userId: req.user.id,
+        expires: getSessionExpiration(),
+      },
+    });
+    res.redirect(
+      `${FRONTEND_URL}/auth/callback?token=${encodeURIComponent(token)}`,
+    );
+  },
 );
 
 // GitHub OAuth
 router.get(
   "/github",
   requireProvider(githubOAuthEnabled, "GitHub"),
-  passport.authenticate("github", { scope: ["user:email"] })
+  passport.authenticate("github", { scope: ["user:email"] }),
 );
 
 router.get(
   "/github/callback",
-  passport.authenticate("github", { session: false, failureRedirect: `${FRONTEND_URL}/login?error=github` }),
-  (req: Request & { user?: { id: string } }, res) => {
+  passport.authenticate("github", {
+    session: false,
+    failureRedirect: `${FRONTEND_URL}/login?error=github`,
+  }),
+  async (req: Request & { user?: { id: string } }, res) => {
     if (!req.user?.id) {
       res.redirect(`${FRONTEND_URL}/login?error=no-user`);
       return;
     }
     const token = signToken(req.user.id);
-    res.redirect(`${FRONTEND_URL}/auth/callback?token=${encodeURIComponent(token)}`);
-  }
+    await prisma.session.create({
+      data: {
+        sessionToken: token,
+        userId: req.user.id,
+        expires: getSessionExpiration(),
+      },
+    });
+    res.redirect(
+      `${FRONTEND_URL}/auth/callback?token=${encodeURIComponent(token)}`,
+    );
+  },
 );
 
-// Logout (client should clear token)
-router.post("/logout", (_, res) => {
+// Logout (server-side session invalidation)
+router.post("/logout", async (req: Request, res) => {
+  const token = getTokenFromRequest(req);
+
+  if (token) {
+    await prisma.session.deleteMany({ where: { sessionToken: token } });
+  }
+
   res.status(200).json({ ok: true });
 });
 
