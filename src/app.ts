@@ -9,6 +9,7 @@ import tripsRoutes from "./routes/trips.js";
 import locationsRoutes from "./routes/locations.js";
 import muslimFeaturesRoutes from "./routes/muslim-features.js";
 import activitiesRoutes from "./routes/activities.js";
+import placesRoutes from "./routes/places.js";
 
 const app = express();
 const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:3000";
@@ -17,7 +18,7 @@ app.use(
   cors({
     origin: FRONTEND_URL,
     credentials: true,
-  })
+  }),
 );
 app.use(cookieParser());
 app.use(express.json());
@@ -32,7 +33,7 @@ app.use("/api/trips", tripsRoutes);
 app.use("/api/trips/:tripId", muslimFeaturesRoutes);
 app.use("/api/trips/:tripId/activities", activitiesRoutes);
 app.use("/api/locations", locationsRoutes);
-
+app.use("/api/places", placesRoutes);
 
 // Health
 app.get("/health", (_, res) => res.json({ ok: true }));

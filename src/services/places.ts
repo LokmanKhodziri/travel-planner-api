@@ -39,7 +39,9 @@ async function nearbySearch(params: URLSearchParams): Promise<NearbyPlace[]> {
   }
 
   if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-    throw new Error(data.error_message ?? `Places API error: ${data.status ?? "unknown"}`);
+    throw new Error(
+      data.error_message ?? `Places API error: ${data.status ?? "unknown"}`,
+    );
   }
 
   return (data.results ?? []).map((place) => ({
@@ -56,7 +58,7 @@ async function nearbySearch(params: URLSearchParams): Promise<NearbyPlace[]> {
 export async function findNearbyMosques(
   latitude: number,
   longitude: number,
-  radius = 5000
+  radius = 5000,
 ): Promise<NearbyPlace[]> {
   const params = new URLSearchParams({
     location: `${latitude},${longitude}`,
@@ -69,7 +71,7 @@ export async function findNearbyMosques(
 export async function findNearbyHalal(
   latitude: number,
   longitude: number,
-  radius = 5000
+  radius = 5000,
 ): Promise<NearbyPlace[]> {
   const params = new URLSearchParams({
     location: `${latitude},${longitude}`,
@@ -77,4 +79,56 @@ export async function findNearbyHalal(
     keyword: "halal restaurant",
   });
   return nearbySearch(params);
+}
+
+export interface PlaceSuggestion {
+  id: string;
+  description: string;
+}
+
+interface PlacesAutocompleteResponse {
+  predictions?: Array<{
+    place_id: string;
+    description: string;
+  }>;
+  status?: string;
+  error_message?: string;
+}
+
+async function autocompleteSearch(
+  params: URLSearchParams,
+): Promise<PlaceSuggestion[]> {
+  if (!GOOGLE_MAPS_API_KEY) {
+    throw new Error("Google Places API is not configured");
+  }
+
+  params.set("key", GOOGLE_MAPS_API_KEY);
+  const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`;
+  const response = await fetch(url);
+  const data = (await response.json()) as PlacesAutocompleteResponse;
+
+  if (data.status === "REQUEST_DENIED") {
+    throw new Error(data.error_message ?? "Places API request denied");
+  }
+
+  if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+    throw new Error(
+      data.error_message ?? `Places API error: ${data.status ?? "unknown"}`,
+    );
+  }
+
+  return (data.predictions ?? []).map((prediction) => ({
+    id: prediction.place_id,
+    description: prediction.description,
+  }));
+}
+
+export async function autocompletePlaces(
+  input: string,
+): Promise<PlaceSuggestion[]> {
+  const params = new URLSearchParams({
+    input: input.trim(),
+    types: "geocode",
+  });
+  return autocompleteSearch(params);
 }
