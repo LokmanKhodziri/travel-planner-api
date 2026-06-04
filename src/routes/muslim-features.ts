@@ -4,7 +4,6 @@ import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { getOwnedTrip, resolveTripCoordinates } from "../lib/trip-utils.js";
 import { getPrayerTimings } from "../services/aladhan.js";
 import { findNearbyHalal, findNearbyMosques } from "../services/places.js";
-import { detectPrayerConflicts } from "../services/prayer-conflicts.js";
 
 const router = Router({ mergeParams: true });
 
@@ -28,7 +27,8 @@ async function getTripCoordsOrError(req: AuthRequest, res: Response) {
   const coords = resolveTripCoordinates(trip);
   if (!coords) {
     res.status(400).json({
-      error: "Add at least one location to this trip before using Muslim-friendly features.",
+      error:
+        "Add at least one location to this trip before using Muslim-friendly features.",
     });
     return null;
   }
@@ -51,12 +51,14 @@ router.get("/prayer-times", async (req: AuthRequest, res) => {
     const timings = await getPrayerTimings(
       context.coords.latitude,
       context.coords.longitude,
-      date
+      date,
     );
     res.json(timings);
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: (e as Error).message ?? "Failed to fetch prayer times" });
+    res
+      .status(500)
+      .json({ error: (e as Error).message ?? "Failed to fetch prayer times" });
   }
 });
 
@@ -70,12 +72,14 @@ router.get("/nearby/mosques", async (req: AuthRequest, res) => {
     const places = await findNearbyMosques(
       context.coords.latitude,
       context.coords.longitude,
-      radius
+      radius,
     );
     res.json(places);
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: (e as Error).message ?? "Failed to fetch mosques" });
+    res
+      .status(500)
+      .json({ error: (e as Error).message ?? "Failed to fetch mosques" });
   }
 });
 
@@ -89,42 +93,16 @@ router.get("/nearby/halal", async (req: AuthRequest, res) => {
     const places = await findNearbyHalal(
       context.coords.latitude,
       context.coords.longitude,
-      radius
+      radius,
     );
     res.json(places);
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: (e as Error).message ?? "Failed to fetch Halal restaurants" });
-  }
-});
-
-// GET /api/trips/:tripId/conflicts?date=YYYY-MM-DD
-router.get("/conflicts", async (req: AuthRequest, res) => {
-  try {
-    const date = requireDate(req.query.date);
-    if (!date) {
-      res.status(400).json({ error: "date query required (YYYY-MM-DD)" });
-      return;
-    }
-
-    const context = await getTripCoordsOrError(req, res);
-    if (!context) return;
-
-    const conflicts = await detectPrayerConflicts(
-      context.coords.latitude,
-      context.coords.longitude,
-      date,
-      context.trip.activities.map((activity) => ({
-        id: activity.id,
-        title: activity.title,
-        startTime: activity.startTime,
-        endTime: activity.endTime,
-      }))
-    );
-    res.json(conflicts);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: (e as Error).message ?? "Failed to detect conflicts" });
+    res
+      .status(500)
+      .json({
+        error: (e as Error).message ?? "Failed to fetch Halal restaurants",
+      });
   }
 });
 
