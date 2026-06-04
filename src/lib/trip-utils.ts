@@ -33,9 +33,11 @@ export function resolveTripCoordinates(trip: {
   if (trip.locations.length === 0) return null;
 
   const latitude =
-    trip.locations.reduce((sum, loc) => sum + loc.latitude, 0) / trip.locations.length;
+    trip.locations.reduce((sum, loc) => sum + loc.latitude, 0) /
+    trip.locations.length;
   const longitude =
-    trip.locations.reduce((sum, loc) => sum + loc.longitude, 0) / trip.locations.length;
+    trip.locations.reduce((sum, loc) => sum + loc.longitude, 0) /
+    trip.locations.length;
 
   return { latitude, longitude, city: trip.destinationCity };
 }
@@ -44,7 +46,7 @@ export async function syncTripDestinationFromLocation(
   tripId: string,
   latitude: number,
   longitude: number,
-  city?: string
+  locationTitle: string,
 ) {
   const trip = await prisma.trip.findUnique({ where: { id: tripId } });
   if (!trip || trip.destinationLat != null) return;
@@ -52,9 +54,9 @@ export async function syncTripDestinationFromLocation(
   await prisma.trip.update({
     where: { id: tripId },
     data: {
+      destinationCity: locationTitle,
       destinationLat: latitude,
       destinationLng: longitude,
-      destinationCity: city ?? trip.destinationCity,
     },
   });
 }
