@@ -1,4 +1,13 @@
-const ALADHAN_BASE = process.env.ALADHAN_API_BASE ?? "https://api.aladhan.com/v1";
+const ALADHAN_API_URL =
+  process.env.ALADHAN_API_URL ?? "https://api.aladhan.com/v1";
+
+interface AladhanTimingResponse {
+  data: {
+    timings: Record<string, string>;
+    date: { gregorian: { date: string }; hijri: { date: string } };
+    meta: { timezone: string };
+  };
+}
 
 export interface PrayerTimings {
   date: string;
@@ -18,7 +27,7 @@ function cleanTime(value: string): string {
   return value.split(" ")[0] ?? value;
 }
 
-/** Accepts YYYY-MM-DD or DD-MM-YYYY and returns DD-MM-YYYY for Aladhan. */
+/** Accepts YYYY-MM-DD and returns DD-MM-YYYY for Aladhan if needed. */
 function toAladhanDate(date: string): string {
   const parts = date.split("-");
   if (parts.length !== 3) return date;
@@ -31,31 +40,19 @@ function toAladhanDate(date: string): string {
 export async function getPrayerTimings(
   latitude: number,
   longitude: number,
-  date: string
+  date: string,
 ): Promise<PrayerTimings> {
   const aladhanDate = toAladhanDate(date);
-  const url = `${ALADHAN_BASE}/timings/${aladhanDate}?latitude=${latitude}&longitude=${longitude}&method=2`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error("Failed to fetch prayer times");
-  }
-
-  const data = (await response.json()) as {
-    data?: {
-      date?: { readable?: string; gregorian?: { date?: string } };
-      meta?: { timezone?: string };
-      timings?: Record<string, string>;
-    };
-  };
-
-  const timings = data.data?.timings;
-  if (!timings) {
-    throw new Error("Prayer times unavailable for this location");
-  }
+  const response = await fetch(
+    `${ALADHAN_API_URL}/timings/${encodeURIComponent(aladhanDate)}?latitude=${latitude}&longitude=${longitude}&method=2`,
+  );
+  if (!response.ok) throw new Error("Failed to fetch prayer timings");
+  const data = (await response.json()) as AladhanTimingResponse;
+  const timings = data.data.timings;
 
   return {
-    date: data.data?.date?.gregorian?.date ?? date,
-    timezone: data.data?.meta?.timezone ?? "UTC",
+    date: data.data.date.gregorian.date,
+    timezone: data.data.meta.timezone,
     timings: {
       Fajr: cleanTime(timings.Fajr),
       Dhuhr: cleanTime(timings.Dhuhr),

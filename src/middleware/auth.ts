@@ -1,9 +1,20 @@
 import type { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import * as jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "change-me-in-production";
 export const SESSION_TIMEOUT_MINUTES = 10;
+
+const jwtSign =
+  (jwt as any).default?.sign ??
+  ((jwt as any).sign as (
+    payload: unknown,
+    secret: string,
+    options: any,
+  ) => string);
+const jwtVerify =
+  (jwt as any).default?.verify ??
+  ((jwt as any).verify as (token: string, secret: string) => unknown);
 
 export interface AuthUser {
   id: string;
@@ -17,12 +28,12 @@ export interface AuthRequest extends Request {
 }
 
 export function signToken(userId: string): string {
-  return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: "7d" });
+  return jwtSign({ sub: userId }, JWT_SECRET, { expiresIn: "7d" });
 }
 
 export function verifyToken(token: string): { sub: string } | null {
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { sub: string };
+    const payload = jwtVerify(token, JWT_SECRET) as { sub: string };
     return payload;
   } catch {
     return null;

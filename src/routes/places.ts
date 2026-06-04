@@ -1,23 +1,23 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
-import { autocompletePlaces } from "../services/places.js";
+import { searchPlaces } from "../services/places.js";
 
 const router = Router();
 router.use(requireAuth);
 
 router.get("/search", async (req: AuthRequest, res) => {
-  try {
-    const input = String(req.query.input ?? "").trim();
-    if (!input) {
-      res.status(400).json({ error: "input query required" });
-      return;
-    }
+  const input = typeof req.query.input === "string" ? req.query.input.trim() : "";
+  if (!input) {
+    res.status(400).json({ error: "input query required" });
+    return;
+  }
 
-    const suggestions = await autocompletePlaces(input);
+  try {
+    const suggestions = await searchPlaces(input);
     res.json(suggestions);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to fetch place suggestions" });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: (e as Error).message ?? "Failed to load place suggestions" });
   }
 });
 

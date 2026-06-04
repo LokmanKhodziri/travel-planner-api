@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
-import { getOwnedTrip } from "../lib/trip-utils.js";
 
 const router = Router({ mergeParams: true });
 
@@ -11,12 +10,11 @@ router.use(requireAuth);
 router.get("/", async (req: AuthRequest, res) => {
   try {
     const tripId = req.params.tripId as string;
-    const trip = await getOwnedTrip(tripId, req.user!.id);
-    if (!trip) {
-      res.status(404).json({ error: "Trip not found" });
-      return;
-    }
-    res.json(trip.activities);
+    const activities = await prisma.itineraryActivity.findMany({
+      where: { tripId, trip: { userId: req.user!.id } },
+      orderBy: { startTime: "asc" },
+    });
+    res.json(activities);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to fetch activities" });
@@ -30,13 +28,19 @@ router.post("/", async (req: AuthRequest, res) => {
     const { title, description, startTime, endTime } = req.body;
 
     if (!title || !startTime || !endTime) {
-      res.status(400).json({ error: "title, startTime, and endTime are required" });
+      res
+        .status(400)
+        .json({ error: "title, startTime and endTime are required" });
       return;
     }
 
     const start = new Date(startTime);
     const end = new Date(endTime);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+    if (
+      Number.isNaN(start.getTime()) ||
+      Number.isNaN(end.getTime()) ||
+      end <= start
+    ) {
       res.status(400).json({ error: "Invalid activity time range" });
       return;
     }
@@ -52,14 +56,15 @@ router.post("/", async (req: AuthRequest, res) => {
     const count = await prisma.itineraryActivity.count({ where: { tripId } });
     const activity = await prisma.itineraryActivity.create({
       data: {
-        tripId,
         title,
         description: description ?? null,
         startTime: start,
         endTime: end,
         order: count,
+        tripId,
       },
     });
+
     res.status(201).json(activity);
   } catch (e) {
     console.error(e);
@@ -109,12 +114,13 @@ router.patch("/:activityId", async (req: AuthRequest, res) => {
 router.delete("/:activityId", async (req: AuthRequest, res) => {
   try {
     const tripId = req.params.tripId as string;
-    const { activityId } = req.params;
+    const activityId = req.params.activityId as string;
 
-    const existing = await prisma.itineraryActivity.findFirst({
-      where: { id: activityId, tripId, trip: { userId: req.user!.id } },
+    const activity = await prisma.itineraryActivity.findFirst({
+      where: { id: activityId, tripId },
+      include: { trip: true },
     });
-    if (!existing) {
+    if (!activity || activity.trip.userId !== req.user!.id) {
       res.status(404).json({ error: "Activity not found" });
       return;
     }

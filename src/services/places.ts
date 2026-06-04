@@ -1,4 +1,11 @@
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+function getGooglePlacesApiKey() {
+  return process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
+}
+
+const PLACES_BASE_URL =
+  "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
+const AUTOCOMPLETE_BASE_URL =
+  "https://maps.googleapis.com/maps/api/place/autocomplete/json";
 
 export interface NearbyPlace {
   id: string;
@@ -10,49 +17,83 @@ export interface NearbyPlace {
   openNow?: boolean;
 }
 
-interface PlacesResponse {
-  results?: Array<{
-    place_id: string;
-    name: string;
-    vicinity?: string;
-    formatted_address?: string;
-    geometry?: { location?: { lat: number; lng: number } };
-    rating?: number;
-    opening_hours?: { open_now?: boolean };
-  }>;
-  status?: string;
-  error_message?: string;
+export interface PlaceSuggestion {
+  id: string;
+  description: string;
 }
 
-async function nearbySearch(params: URLSearchParams): Promise<NearbyPlace[]> {
-  if (!GOOGLE_MAPS_API_KEY) {
-    throw new Error("Google Places API is not configured");
-  }
-
-  params.set("key", GOOGLE_MAPS_API_KEY);
-  const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params.toString()}`;
-  const response = await fetch(url);
-  const data = (await response.json()) as PlacesResponse;
-
-  if (data.status === "REQUEST_DENIED") {
-    throw new Error(data.error_message ?? "Places API request denied");
-  }
-
-  if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-    throw new Error(
-      data.error_message ?? `Places API error: ${data.status ?? "unknown"}`,
-    );
-  }
-
-  return (data.results ?? []).map((place) => ({
+function buildPlaceResult(place: any): NearbyPlace {
+  return {
     id: place.place_id,
     name: place.name,
-    address: place.vicinity ?? place.formatted_address ?? "",
-    latitude: place.geometry?.location?.lat ?? 0,
-    longitude: place.geometry?.location?.lng ?? 0,
+    address: place.vicinity || place.formatted_address || "",
+    latitude: place.geometry.location.lat,
+    longitude: place.geometry.location.lng,
     rating: place.rating,
     openNow: place.opening_hours?.open_now,
-  }));
+  };
+}
+
+function buildPlaceSuggestion(prediction: any): PlaceSuggestion {
+  return {
+    id: prediction.place_id,
+    description: prediction.description,
+  };
+}
+
+export async function searchPlaces(input: string): Promise<PlaceSuggestion[]> {
+  const key = getGooglePlacesApiKey();
+  if (!key) throw new Error("Google Places API key is not configured");
+
+  const params = new URLSearchParams({ input, key });
+  const url = `${AUTOCOMPLETE_BASE_URL}?${params.toString()}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("Failed to fetch place suggestions");
+  const data = await response.json();
+
+  if (data.status !== "OK") {
+    if (data.status === "ZERO_RESULTS") return [];
+    const message = data.error_message
+      ? `${data.status}: ${data.error_message}`
+      : data.status;
+    throw new Error(`Google Places API error: ${message}`);
+  }
+
+  return (data.predictions || []).map(buildPlaceSuggestion);
+}
+
+async function fetchNearbyPlaces(
+  latitude: number,
+  longitude: number,
+  type: string,
+  radius = 5000,
+  keyword?: string,
+): Promise<NearbyPlace[]> {
+  const key = getGooglePlacesApiKey();
+  if (!key) throw new Error("Google Places API key is not configured");
+
+  const params = new URLSearchParams({
+    location: `${latitude},${longitude}`,
+    radius: String(radius),
+    type,
+    key,
+  });
+  if (keyword) params.set("keyword", keyword);
+
+  const url = `${PLACES_BASE_URL}?${params.toString()}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("Failed to fetch nearby places");
+  const data = await response.json();
+
+  if (data.status !== "OK") {
+    if (data.status === "ZERO_RESULTS") return [];
+    const message = data.error_message
+      ? `${data.status}: ${data.error_message}`
+      : data.status;
+    throw new Error(`Google Places API error: ${message}`);
+  }
+
+  return (data.results || []).map(buildPlaceResult);
 }
 
 export async function findNearbyMosques(
@@ -60,12 +101,17 @@ export async function findNearbyMosques(
   longitude: number,
   radius = 5000,
 ): Promise<NearbyPlace[]> {
-  const params = new URLSearchParams({
-    location: `${latitude},${longitude}`,
-    radius: String(radius),
-    type: "mosque",
-  });
-  return nearbySearch(params);
+  const results = await fetchNearbyPlaces(
+    latitude,
+    longitude,
+    "mosque",
+    radius,
+  );
+  if (results.length === 0 && radius < 25000) {
+    console.log(`[places] no mosques within ${radius}m, retrying with 25000m`);
+    return fetchNearbyPlaces(latitude, longitude, "mosque", 25000);
+  }
+  return results;
 }
 
 export async function findNearbyHalal(
@@ -73,62 +119,16 @@ export async function findNearbyHalal(
   longitude: number,
   radius = 5000,
 ): Promise<NearbyPlace[]> {
-  const params = new URLSearchParams({
-    location: `${latitude},${longitude}`,
-    radius: String(radius),
-    keyword: "halal restaurant",
-  });
-  return nearbySearch(params);
-}
-
-export interface PlaceSuggestion {
-  id: string;
-  description: string;
-}
-
-interface PlacesAutocompleteResponse {
-  predictions?: Array<{
-    place_id: string;
-    description: string;
-  }>;
-  status?: string;
-  error_message?: string;
-}
-
-async function autocompleteSearch(
-  params: URLSearchParams,
-): Promise<PlaceSuggestion[]> {
-  if (!GOOGLE_MAPS_API_KEY) {
-    throw new Error("Google Places API is not configured");
+  const results = await fetchNearbyPlaces(
+    latitude,
+    longitude,
+    "restaurant",
+    radius,
+    "halal",
+  );
+  if (results.length === 0 && radius < 25000) {
+    console.log(`[places] no halal within ${radius}m, retrying with 25000m`);
+    return fetchNearbyPlaces(latitude, longitude, "restaurant", 25000, "halal");
   }
-
-  params.set("key", GOOGLE_MAPS_API_KEY);
-  const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`;
-  const response = await fetch(url);
-  const data = (await response.json()) as PlacesAutocompleteResponse;
-
-  if (data.status === "REQUEST_DENIED") {
-    throw new Error(data.error_message ?? "Places API request denied");
-  }
-
-  if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-    throw new Error(
-      data.error_message ?? `Places API error: ${data.status ?? "unknown"}`,
-    );
-  }
-
-  return (data.predictions ?? []).map((prediction) => ({
-    id: prediction.place_id,
-    description: prediction.description,
-  }));
-}
-
-export async function autocompletePlaces(
-  input: string,
-): Promise<PlaceSuggestion[]> {
-  const params = new URLSearchParams({
-    input: input.trim(),
-    types: "geocode",
-  });
-  return autocompleteSearch(params);
+  return results;
 }
