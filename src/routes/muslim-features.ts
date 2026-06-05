@@ -69,15 +69,12 @@ router.get("/nearby/mosques", async (req: AuthRequest, res) => {
     if (!context) return;
 
     const radius = Number(req.query.radius) || 5000;
-    console.log(
-      `[nearby/mosques] trip=${context.trip.id} user=${req.user?.id} coords=${context.coords.latitude},${context.coords.longitude} radius=${radius}`,
-    );
     const places = await findNearbyMosques(
       context.coords.latitude,
       context.coords.longitude,
       radius,
     );
-    console.log(`[nearby/mosques] results=${places.length}`);
+
     res.json(places);
   } catch (e) {
     console.error(e);
@@ -94,15 +91,12 @@ router.get("/nearby/halal", async (req: AuthRequest, res) => {
     if (!context) return;
 
     const radius = Number(req.query.radius) || 5000;
-    console.log(
-      `[nearby/halal] trip=${context.trip.id} user=${req.user?.id} coords=${context.coords.latitude},${context.coords.longitude} radius=${radius}`,
-    );
     const places = await findNearbyHalal(
       context.coords.latitude,
       context.coords.longitude,
       radius,
     );
-    console.log(`[nearby/halal] results=${places.length}`);
+
     res.json(places);
   } catch (e) {
     console.error(e);

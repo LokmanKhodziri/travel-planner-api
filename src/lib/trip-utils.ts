@@ -60,21 +60,3 @@ export async function syncTripDestinationFromLocation(
     },
   });
 }
-
-export async function getOwnedTrip(tripId: string, userId: string) {
-  return prisma.trip.findFirst({
-    where: { id: tripId, userId },
-    include: {
-      locations: true,
-      activities: true,
-    },
-  });
-}
-
-export function resolveTripCoordinates(trip: {
-  locations: { latitude: number; longitude: number }[];
-}) {
-  if (!trip.locations?.length) return null;
-  const { latitude, longitude } = trip.locations[0];
-  return { latitude, longitude };
-}

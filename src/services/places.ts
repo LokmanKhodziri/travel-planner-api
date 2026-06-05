@@ -108,7 +108,6 @@ export async function findNearbyMosques(
     radius,
   );
   if (results.length === 0 && radius < 25000) {
-    console.log(`[places] no mosques within ${radius}m, retrying with 25000m`);
     return fetchNearbyPlaces(latitude, longitude, "mosque", 25000);
   }
   return results;
@@ -127,7 +126,6 @@ export async function findNearbyHalal(
     "halal",
   );
   if (results.length === 0 && radius < 25000) {
-    console.log(`[places] no halal within ${radius}m, retrying with 25000m`);
     return fetchNearbyPlaces(latitude, longitude, "restaurant", 25000, "halal");
   }
   return results;
