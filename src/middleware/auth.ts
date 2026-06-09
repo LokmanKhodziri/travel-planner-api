@@ -21,6 +21,7 @@ export interface AuthUser {
   email: string;
   name: string | null;
   image: string | null;
+  role: "USER" | "ADMIN";
 }
 
 export interface AuthRequest extends Request {
@@ -77,7 +78,7 @@ export async function requireAuth(
     where: { sessionToken: token },
     include: {
       user: {
-        select: { id: true, email: true, name: true, image: true },
+        select: { id: true, email: true, name: true, image: true, role: true },
       },
     },
   });
@@ -110,6 +111,22 @@ export async function requireAuth(
     email: session.user.email,
     name: session.user.name,
     image: session.user.image,
+    role: session.user.role,
   };
   next();
+}
+
+export async function requireAdmin(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  await requireAuth(req, res, () => {
+    if (req.user?.role !== "ADMIN") {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+
+    next();
+  });
 }

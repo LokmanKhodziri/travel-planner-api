@@ -20,7 +20,16 @@ if (googleOAuthEnabled) {
         clientSecret: GOOGLE_CLIENT_SECRET,
         callbackURL: `${API_URL}/auth/google/callback`,
       },
-      async (_accessToken, _refreshToken, profile, done) => {
+      async (
+        _accessToken: string,
+        _refreshToken: string,
+        profile: {
+          displayName?: string;
+          photos?: { value: string }[];
+          emails?: { value: string }[];
+        },
+        done: (err: Error | null, user?: { id: string }) => void
+      ) => {
         try {
           const email = profile.emails?.[0]?.value;
           if (!email) return done(new Error("No email from Google"));

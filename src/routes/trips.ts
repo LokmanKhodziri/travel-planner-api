@@ -26,7 +26,10 @@ router.get("/", async (req: AuthRequest, res) => {
 router.get("/:id", async (req: AuthRequest, res) => {
   try {
     const trip = await prisma.trip.findFirst({
-      where: { id: req.params.id, userId: req.user!.id },
+      where: {
+        id: req.params.id,
+        ...(req.user!.role === "ADMIN" ? {} : { userId: req.user!.id }),
+      },
       include: {
         locations: { orderBy: { order: "asc" } },
         activities: { orderBy: { startTime: "asc" } },

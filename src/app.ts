@@ -10,6 +10,7 @@ import locationsRoutes from "./routes/locations.js";
 import muslimFeaturesRoutes from "./routes/muslim-features.js";
 import activitiesRoutes from "./routes/activities.js";
 import placesRoutes from "./routes/places.js";
+import adminRoutes from "./routes/admin.js";
 
 const app = express();
 const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:3000";
@@ -34,6 +35,7 @@ app.use("/api/trips/:tripId", muslimFeaturesRoutes);
 app.use("/api/trips/:tripId/activities", activitiesRoutes);
 app.use("/api/locations", locationsRoutes);
 app.use("/api/places", placesRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Health
 app.get("/health", (_, res) => res.json({ ok: true }));
