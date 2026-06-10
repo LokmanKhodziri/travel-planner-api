@@ -14,10 +14,38 @@ import adminRoutes from "./routes/admin.js";
 
 const app = express();
 const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:3000";
+const allowedOrigins = new Set(
+  [
+    FRONTEND_URL,
+    ...(process.env.CORS_ORIGINS ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  ].filter(Boolean),
+);
+
+function isAllowedVercelPreview(origin: string) {
+  const previewPattern = process.env.VERCEL_PREVIEW_ORIGIN_REGEX;
+  if (!previewPattern) return false;
+
+  try {
+    return new RegExp(previewPattern).test(origin);
+  } catch {
+    console.warn("Invalid VERCEL_PREVIEW_ORIGIN_REGEX value");
+    return false;
+  }
+}
 
 app.use(
   cors({
-    origin: FRONTEND_URL,
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.has(origin) || isAllowedVercelPreview(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS blocked origin: ${origin}`));
+    },
     credentials: true,
   }),
 );
