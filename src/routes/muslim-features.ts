@@ -3,7 +3,11 @@ import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { getOwnedTrip, resolveTripCoordinates } from "../lib/trip-utils.js";
 import { getPrayerTimings } from "../services/aladhan.js";
-import { findNearbyHalal, findNearbyMosques } from "../services/places.js";
+import {
+  findNearbyActivities,
+  findNearbyHalal,
+  findNearbyMosques,
+} from "../services/places.js";
 
 const router = Router({ mergeParams: true });
 
@@ -102,6 +106,72 @@ router.get("/nearby/halal", async (req: AuthRequest, res) => {
     console.error(e);
     res.status(500).json({
       error: (e as Error).message ?? "Failed to fetch Halal restaurants",
+    });
+  }
+});
+
+// GET /api/trips/:tripId/activity-recommendations?radius=5000
+router.get("/activity-recommendations", async (req: AuthRequest, res) => {
+  try {
+    const tripId = req.params.tripId as string;
+    const trip = await getOwnedTrip(tripId, req.user!.id);
+    if (!trip) {
+      res.status(404).json({ error: "Trip not found" });
+      return;
+    }
+
+    if (trip.locations.length === 0) {
+      res.status(400).json({
+        error: "Add at least one location to this trip before getting recommendations.",
+      });
+      return;
+    }
+
+    const radius = Number(req.query.radius) || 5000;
+    const rows = await Promise.all(
+      trip.locations.slice(0, 5).map(async (location) => {
+        try {
+          const recommendations = await findNearbyActivities(
+            location.latitude,
+            location.longitude,
+            radius,
+          );
+
+          return {
+            sourceLocation: {
+              id: location.id,
+              title: location.locationTitle,
+              latitude: location.latitude,
+              longitude: location.longitude,
+            },
+            recommendations,
+            error: null,
+          };
+        } catch (e) {
+          return {
+            sourceLocation: {
+              id: location.id,
+              title: location.locationTitle,
+              latitude: location.latitude,
+              longitude: location.longitude,
+            },
+            recommendations: [],
+            error: (e as Error).message,
+          };
+        }
+      }),
+    );
+
+    res.json({
+      radius,
+      source: "Google Places live search",
+      note: "Recommendations are based on the first 5 saved trip locations and are not stored until added as activities.",
+      rows,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({
+      error: (e as Error).message ?? "Failed to fetch activity recommendations",
     });
   }
 });
