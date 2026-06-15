@@ -1,10 +1,21 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
+import { getTravelEstimate } from "../services/distance-matrix.js";
 
 const router = Router({ mergeParams: true });
 
 router.use(requireAuth);
+
+function parseOptionalCoordinate(value: unknown) {
+  if (value == null || value === "") return null;
+  const coordinate = Number(value);
+  return Number.isFinite(coordinate) ? coordinate : null;
+}
+
+function activityDateKey(activity: { startTime: Date }) {
+  return activity.startTime.toISOString().slice(0, 10);
+}
 
 // GET /api/trips/:tripId/activities
 router.get("/", async (req: AuthRequest, res) => {
@@ -25,7 +36,9 @@ router.get("/", async (req: AuthRequest, res) => {
 router.post("/", async (req: AuthRequest, res) => {
   try {
     const tripId = req.params.tripId as string;
-    const { title, description, startTime, endTime } = req.body;
+    const { title, description, startTime, endTime, address } = req.body;
+    const latitude = parseOptionalCoordinate(req.body.latitude);
+    const longitude = parseOptionalCoordinate(req.body.longitude);
 
     if (!title || !startTime || !endTime) {
       res
@@ -58,6 +71,9 @@ router.post("/", async (req: AuthRequest, res) => {
       data: {
         title,
         description: description ?? null,
+        address: address ?? null,
+        latitude,
+        longitude,
         startTime: start,
         endTime: end,
         order: count,
@@ -72,12 +88,80 @@ router.post("/", async (req: AuthRequest, res) => {
   }
 });
 
+// GET /api/trips/:tripId/activities/travel-times?date=YYYY-MM-DD
+router.get("/travel-times", async (req: AuthRequest, res) => {
+  try {
+    const tripId = req.params.tripId as string;
+    const date = typeof req.query.date === "string" ? req.query.date : null;
+
+    const activities = await prisma.itineraryActivity.findMany({
+      where: { tripId, trip: { userId: req.user!.id } },
+      orderBy: { startTime: "asc" },
+    });
+    const dayActivities = date
+      ? activities.filter((activity) => activityDateKey(activity) === date)
+      : activities;
+
+    const segments = await Promise.all(
+      dayActivities.slice(0, -1).map(async (fromActivity, index) => {
+        const toActivity = dayActivities[index + 1];
+        const baseSegment = {
+          fromActivityId: fromActivity.id,
+          fromTitle: fromActivity.title,
+          toActivityId: toActivity.id,
+          toTitle: toActivity.title,
+        };
+
+        if (
+          fromActivity.latitude == null ||
+          fromActivity.longitude == null ||
+          toActivity.latitude == null ||
+          toActivity.longitude == null
+        ) {
+          return {
+            ...baseSegment,
+            estimate: null,
+            error:
+              "Travel time needs coordinates. Add activities from recommendations to calculate it.",
+          };
+        }
+
+        try {
+          const estimate = await getTravelEstimate(
+            {
+              latitude: fromActivity.latitude,
+              longitude: fromActivity.longitude,
+            },
+            {
+              latitude: toActivity.latitude,
+              longitude: toActivity.longitude,
+            },
+          );
+
+          return { ...baseSegment, estimate, error: null };
+        } catch (e) {
+          return {
+            ...baseSegment,
+            estimate: null,
+            error: (e as Error).message,
+          };
+        }
+      }),
+    );
+
+    res.json({ date, segments });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed to fetch travel times" });
+  }
+});
+
 // PATCH /api/trips/:tripId/activities/:activityId
 router.patch("/:activityId", async (req: AuthRequest, res) => {
   try {
     const tripId = req.params.tripId as string;
     const { activityId } = req.params;
-    const { title, description, startTime, endTime } = req.body;
+    const { title, description, startTime, endTime, address } = req.body;
 
     const existing = await prisma.itineraryActivity.findFirst({
       where: { id: activityId, tripId, trip: { userId: req.user!.id } },
@@ -99,6 +183,15 @@ router.patch("/:activityId", async (req: AuthRequest, res) => {
       data: {
         title: title ?? existing.title,
         description: description ?? existing.description,
+        address: address ?? existing.address,
+        latitude:
+          req.body.latitude === undefined
+            ? existing.latitude
+            : parseOptionalCoordinate(req.body.latitude),
+        longitude:
+          req.body.longitude === undefined
+            ? existing.longitude
+            : parseOptionalCoordinate(req.body.longitude),
         startTime: start,
         endTime: end,
       },
