@@ -95,6 +95,9 @@ model ItineraryActivity {
   id          String   @id @default(cuid())
   title       String
   description String?
+  address     String?
+  latitude    Float?
+  longitude   Float?
   startTime   DateTime
   endTime     DateTime
   order       Int      @default(0)
