@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
+import { geocodeAddress } from "../services/geocode.js";
 import { getTravelEstimate } from "../services/distance-matrix.js";
 
 const router = Router({ mergeParams: true });
@@ -66,14 +67,32 @@ router.post("/", async (req: AuthRequest, res) => {
       return;
     }
 
+    let resolvedLatitude = latitude;
+    let resolvedLongitude = longitude;
+    const trimmedAddress =
+      typeof address === "string" ? address.trim() : "";
+
+    if (
+      trimmedAddress &&
+      (resolvedLatitude == null || resolvedLongitude == null)
+    ) {
+      try {
+        const geocoded = await geocodeAddress(trimmedAddress);
+        resolvedLatitude = geocoded.latitude;
+        resolvedLongitude = geocoded.longitude;
+      } catch (geocodeError) {
+        console.error(geocodeError);
+      }
+    }
+
     const count = await prisma.itineraryActivity.count({ where: { tripId } });
     const activity = await prisma.itineraryActivity.create({
       data: {
         title,
         description: description ?? null,
-        address: address ?? null,
-        latitude,
-        longitude,
+        address: trimmedAddress || null,
+        latitude: resolvedLatitude,
+        longitude: resolvedLongitude,
         startTime: start,
         endTime: end,
         order: count,
