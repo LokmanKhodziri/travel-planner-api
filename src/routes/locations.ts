@@ -12,6 +12,10 @@ export interface TransformedLocation {
   latitude: number;
   longitude: number;
   county?: string;
+  tripId: string;
+  tripTitle: string;
+  locationTitle: string;
+  order: number;
 }
 
 // GET /api/locations – all locations for current user (for globe)
@@ -23,8 +27,11 @@ router.get("/", async (req: AuthRequest, res) => {
         locationTitle: true,
         latitude: true,
         longitude: true,
+        order: true,
+        tripId: true,
         trip: { select: { title: true } },
       },
+      orderBy: [{ tripId: "asc" }, { order: "asc" }],
     });
     const transformed: TransformedLocation[] = await Promise.all(
       locations.map(async (loc) => {
@@ -34,8 +41,12 @@ router.get("/", async (req: AuthRequest, res) => {
           latitude: loc.latitude,
           longitude: loc.longitude,
           county: geo.county || undefined,
+          tripId: loc.tripId,
+          tripTitle: loc.trip.title,
+          locationTitle: loc.locationTitle,
+          order: loc.order,
         };
-      })
+      }),
     );
     res.json(transformed);
   } catch (e) {
