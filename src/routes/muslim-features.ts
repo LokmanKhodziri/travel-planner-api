@@ -66,18 +66,18 @@ router.get("/prayer-times", async (req: AuthRequest, res) => {
   }
 });
 
-// GET /api/trips/:tripId/nearby/mosques?radius=5000
+// GET /api/trips/:tripId/nearby/mosques?radius=5000&latitude=&longitude=
 router.get("/nearby/mosques", async (req: AuthRequest, res) => {
   try {
     const context = await getTripCoordsOrError(req, res);
     if (!context) return;
 
+    const queryLat = Number(req.query.latitude);
+    const queryLng = Number(req.query.longitude);
+    const latitude = Number.isFinite(queryLat) ? queryLat : context.coords.latitude;
+    const longitude = Number.isFinite(queryLng) ? queryLng : context.coords.longitude;
     const radius = Number(req.query.radius) || 5000;
-    const places = await findNearbyMosques(
-      context.coords.latitude,
-      context.coords.longitude,
-      radius,
-    );
+    const places = await findNearbyMosques(latitude, longitude, radius);
 
     res.json(places);
   } catch (e) {
