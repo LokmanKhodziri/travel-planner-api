@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { geocodeAddress } from "../services/geocode.js";
-import { getTravelEstimate } from "../services/distance-matrix.js";
+import { getSmartTravelEstimate, parseTravelMode } from "../services/distance-matrix.js";
 import { ensureTripLocation } from "../lib/trip-utils.js";
 
 const router = Router({ mergeParams: true });
@@ -115,11 +115,12 @@ router.post("/", async (req: AuthRequest, res) => {
   }
 });
 
-// GET /api/trips/:tripId/activities/travel-times?date=YYYY-MM-DD
+// GET /api/trips/:tripId/activities/travel-times?date=YYYY-MM-DD&mode=driving|transit|walking
 router.get("/travel-times", async (req: AuthRequest, res) => {
   try {
     const tripId = req.params.tripId as string;
     const date = typeof req.query.date === "string" ? req.query.date : null;
+    const preferredMode = parseTravelMode(req.query.mode);
 
     const activities = await prisma.itineraryActivity.findMany({
       where: { tripId, trip: { userId: req.user!.id } },
@@ -154,7 +155,7 @@ router.get("/travel-times", async (req: AuthRequest, res) => {
         }
 
         try {
-          const estimate = await getTravelEstimate(
+          const estimate = await getSmartTravelEstimate(
             {
               latitude: fromActivity.latitude,
               longitude: fromActivity.longitude,
@@ -163,6 +164,7 @@ router.get("/travel-times", async (req: AuthRequest, res) => {
               latitude: toActivity.latitude,
               longitude: toActivity.longitude,
             },
+            preferredMode,
           );
 
           return { ...baseSegment, estimate, error: null };
@@ -176,7 +178,7 @@ router.get("/travel-times", async (req: AuthRequest, res) => {
       }),
     );
 
-    res.json({ date, segments });
+    res.json({ date, mode: preferredMode, segments });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to fetch travel times" });
