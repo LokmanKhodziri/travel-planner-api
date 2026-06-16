@@ -121,14 +121,26 @@ router.get("/travel-times", async (req: AuthRequest, res) => {
     const tripId = req.params.tripId as string;
     const date = typeof req.query.date === "string" ? req.query.date : null;
     const preferredMode = parseTravelMode(req.query.mode);
+    const orderParam =
+      typeof req.query.order === "string" ? req.query.order.trim() : "";
 
     const activities = await prisma.itineraryActivity.findMany({
       where: { tripId, trip: { userId: req.user!.id } },
       orderBy: { startTime: "asc" },
     });
-    const dayActivities = date
+    let dayActivities = date
       ? activities.filter((activity) => activityDateKey(activity) === date)
       : activities;
+
+    if (orderParam) {
+      const orderIds = orderParam.split(",").map((id) => id.trim()).filter(Boolean);
+      const byId = new Map(dayActivities.map((activity) => [activity.id, activity]));
+      dayActivities = orderIds
+        .map((id) => byId.get(id))
+        .filter((activity): activity is (typeof dayActivities)[number] =>
+          Boolean(activity),
+        );
+    }
 
     const segments = await Promise.all(
       dayActivities.slice(0, -1).map(async (fromActivity, index) => {
