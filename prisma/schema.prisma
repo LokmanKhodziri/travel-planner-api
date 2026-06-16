@@ -23,6 +23,8 @@ model User {
   role          UserRole  @default(USER)
   emailVerified DateTime?
   image         String?
+  homeCity      String?
+  timezone      String?
   accounts      Account[]
   sessions      Session[]
   trip          Trip[]
