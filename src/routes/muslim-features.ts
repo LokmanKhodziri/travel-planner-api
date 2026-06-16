@@ -128,6 +128,11 @@ router.get("/activity-recommendations", async (req: AuthRequest, res) => {
     }
 
     const radius = Number(req.query.radius) || 5000;
+    const excludeIds =
+      typeof req.query.exclude === "string" && req.query.exclude.trim()
+        ? req.query.exclude.split(",").map((id) => id.trim()).filter(Boolean)
+        : [];
+    const extended = req.query.extended === "true" || req.query.extended === "1";
     const rows = await Promise.all(
       trip.locations.slice(0, 5).map(async (location) => {
         try {
@@ -135,6 +140,7 @@ router.get("/activity-recommendations", async (req: AuthRequest, res) => {
             location.latitude,
             location.longitude,
             radius,
+            { excludeIds, extended },
           );
 
           return {
@@ -165,7 +171,7 @@ router.get("/activity-recommendations", async (req: AuthRequest, res) => {
     res.json({
       radius,
       source: "Google Places live search",
-      note: "Recommendations are based on the first 5 saved trip locations and are not stored until added as activities.",
+      note: "Recommendations are based on your saved trip locations. Places already in your itinerary are hidden automatically.",
       rows,
     });
   } catch (e) {

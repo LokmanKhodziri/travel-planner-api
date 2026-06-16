@@ -122,6 +122,38 @@ async function fetchNearbyPlaces(
   return (data.results || []).map((place: any) => buildPlaceResult(place, category));
 }
 
+const BASE_ACTIVITY_SEARCHES = [
+  {
+    type: "tourist_attraction",
+    keyword: "things to do",
+    category: "Attraction",
+  },
+  { type: "museum", keyword: "museum", category: "Museum" },
+  { type: "park", keyword: "park", category: "Park" },
+  {
+    type: "shopping_mall",
+    keyword: "shopping",
+    category: "Shopping",
+  },
+] as const;
+
+const EXTENDED_ACTIVITY_SEARCHES = [
+  { type: "art_gallery", keyword: "gallery", category: "Gallery" },
+  { type: "zoo", keyword: "zoo", category: "Zoo" },
+  { type: "aquarium", keyword: "aquarium", category: "Aquarium" },
+  {
+    type: "amusement_park",
+    keyword: "theme park",
+    category: "Theme park",
+  },
+] as const;
+
+export interface FindNearbyActivitiesOptions {
+  excludeIds?: string[];
+  limit?: number;
+  extended?: boolean;
+}
+
 export async function findNearbyMosques(
   latitude: number,
   longitude: number,
@@ -169,21 +201,11 @@ export async function findNearbyActivities(
   latitude: number,
   longitude: number,
   radius = 5000,
+  options: FindNearbyActivitiesOptions = {},
 ): Promise<NearbyPlace[]> {
-  const searches = [
-    {
-      type: "tourist_attraction",
-      keyword: "things to do",
-      category: "Attraction",
-    },
-    { type: "museum", keyword: "museum", category: "Museum" },
-    { type: "park", keyword: "park", category: "Park" },
-    {
-      type: "shopping_mall",
-      keyword: "shopping",
-      category: "Shopping",
-    },
-  ];
+  const searches = options.extended
+    ? [...BASE_ACTIVITY_SEARCHES, ...EXTENDED_ACTIVITY_SEARCHES]
+    : [...BASE_ACTIVITY_SEARCHES];
 
   const results = await Promise.all(
     searches.map((search) =>
@@ -198,12 +220,15 @@ export async function findNearbyActivities(
     ),
   );
 
+  const excluded = new Set(options.excludeIds ?? []);
   const unique = new Map<string, NearbyPlace>();
   for (const place of results.flat()) {
+    if (excluded.has(place.id)) continue;
     if (!unique.has(place.id)) unique.set(place.id, place);
   }
 
+  const limit = options.limit ?? 12;
   return [...unique.values()]
     .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
-    .slice(0, 12);
+    .slice(0, limit);
 }
