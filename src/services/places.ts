@@ -4,8 +4,23 @@ function getGooglePlacesApiKey() {
 
 const PLACES_BASE_URL =
   "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
+const PLACE_DETAILS_BASE_URL =
+  "https://maps.googleapis.com/maps/api/place/details/json";
 const AUTOCOMPLETE_BASE_URL =
   "https://maps.googleapis.com/maps/api/place/autocomplete/json";
+
+export interface PlaceOpeningPeriod {
+  openDay: number;
+  openTime: string;
+  closeDay: number;
+  closeTime?: string;
+}
+
+export interface PlaceOpeningHours {
+  openNow?: boolean;
+  weekdayText?: string[];
+  periods?: PlaceOpeningPeriod[];
+}
 
 export interface NearbyPlace {
   id: string;
@@ -16,6 +31,7 @@ export interface NearbyPlace {
   rating?: number;
   userRatingsTotal?: number;
   openNow?: boolean;
+  openingHours?: PlaceOpeningHours;
   category?: string;
   about: string;
 }
@@ -26,8 +42,12 @@ export interface PlaceSuggestion {
 }
 
 function buildPlaceAbout(place: any, category?: string) {
-  const typeLabel = category ? category.toLowerCase() : "place";
-  const parts = [`A nearby ${typeLabel} option for this trip location.`];
+  const parts =
+    category === "Local special"
+      ? [
+          "A local-special pick — markets, street food, or culture unique to this area.",
+        ]
+      : [`A nearby ${category ? category.toLowerCase() : "place"} option for this trip location.`];
 
   if (typeof place.rating === "number") {
     const reviewText =
@@ -41,10 +61,37 @@ function buildPlaceAbout(place: any, category?: string) {
     parts.push(place.opening_hours.open_now ? "Currently open." : "Currently closed.");
   }
 
+  if (category === "Local special" && place.opening_hours?.weekday_text?.length) {
+    const today = new Date().getDay();
+    const todayHours = place.opening_hours.weekday_text[today];
+    if (todayHours) parts.push(`Hours today: ${todayHours}.`);
+  }
+
   return parts.join(" ");
 }
 
-function buildPlaceResult(place: any, category?: string): NearbyPlace {
+function parseOpeningHours(raw: any): PlaceOpeningHours | undefined {
+  if (!raw) return undefined;
+
+  return {
+    openNow: raw.open_now,
+    weekdayText: raw.weekday_text,
+    periods: (raw.periods || []).map((period: any) => ({
+      openDay: period.open.day,
+      openTime: period.open.time,
+      closeDay: period.close?.day ?? period.open.day,
+      closeTime: period.close?.time,
+    })),
+  };
+}
+
+function buildPlaceResult(
+  place: any,
+  category?: string,
+  openingHours?: PlaceOpeningHours,
+): NearbyPlace {
+  const parsedHours = openingHours ?? parseOpeningHours(place.opening_hours);
+
   return {
     id: place.place_id,
     name: place.name,
@@ -53,7 +100,8 @@ function buildPlaceResult(place: any, category?: string): NearbyPlace {
     longitude: place.geometry.location.lng,
     rating: place.rating,
     userRatingsTotal: place.user_ratings_total,
-    openNow: place.opening_hours?.open_now,
+    openNow: parsedHours?.openNow,
+    openingHours: parsedHours,
     category,
     about: buildPlaceAbout(place, category),
   };
@@ -122,6 +170,61 @@ async function fetchNearbyPlaces(
   return (data.results || []).map((place: any) => buildPlaceResult(place, category));
 }
 
+async function fetchPlaceOpeningHours(
+  placeId: string,
+): Promise<PlaceOpeningHours | undefined> {
+  const key = getGooglePlacesApiKey();
+  if (!key) throw new Error("Google Places API key is not configured");
+
+  const params = new URLSearchParams({
+    place_id: placeId,
+    fields: "opening_hours",
+    key,
+  });
+  const url = `${PLACE_DETAILS_BASE_URL}?${params.toString()}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("Failed to fetch place opening hours");
+  const data = await response.json();
+
+  if (data.status !== "OK") {
+    if (data.status === "NOT_FOUND") return undefined;
+    const message = data.error_message
+      ? `${data.status}: ${data.error_message}`
+      : data.status;
+    throw new Error(`Google Places API error: ${message}`);
+  }
+
+  return parseOpeningHours(data.result?.opening_hours);
+}
+
+async function enrichPlaceWithOpeningHours(place: NearbyPlace): Promise<NearbyPlace> {
+  if (place.openingHours?.periods?.length) return place;
+
+  try {
+    const openingHours = await fetchPlaceOpeningHours(place.id);
+    if (!openingHours) return place;
+
+    return {
+      ...place,
+      openNow: openingHours.openNow ?? place.openNow,
+      openingHours,
+      about: place.about,
+    };
+  } catch {
+    return place;
+  }
+}
+
+async function enrichLocalSpecialPlaces(places: NearbyPlace[]) {
+  return Promise.all(
+    places.map((place) =>
+      place.category === "Local special"
+        ? enrichPlaceWithOpeningHours(place)
+        : Promise.resolve(place),
+    ),
+  );
+}
+
 const BASE_ACTIVITY_SEARCHES = [
   {
     type: "tourist_attraction",
@@ -134,6 +237,34 @@ const BASE_ACTIVITY_SEARCHES = [
     type: "shopping_mall",
     keyword: "shopping",
     category: "Shopping",
+  },
+] as const;
+
+const LOCAL_SPECIAL_SEARCHES = [
+  {
+    type: "tourist_attraction",
+    keyword: "local market",
+    category: "Local special",
+  },
+  {
+    type: "tourist_attraction",
+    keyword: "night market",
+    category: "Local special",
+  },
+  {
+    type: "tourist_attraction",
+    keyword: "street food",
+    category: "Local special",
+  },
+  {
+    type: "point_of_interest",
+    keyword: "pasar malam",
+    category: "Local special",
+  },
+  {
+    type: "tourist_attraction",
+    keyword: "cultural village",
+    category: "Local special",
   },
 ] as const;
 
@@ -203,32 +334,52 @@ export async function findNearbyActivities(
   radius = 5000,
   options: FindNearbyActivitiesOptions = {},
 ): Promise<NearbyPlace[]> {
-  const searches = options.extended
+  const standardSearches = options.extended
     ? [...BASE_ACTIVITY_SEARCHES, ...EXTENDED_ACTIVITY_SEARCHES]
     : [...BASE_ACTIVITY_SEARCHES];
 
-  const results = await Promise.all(
-    searches.map((search) =>
-      fetchNearbyPlaces(
-        latitude,
-        longitude,
-        search.type,
-        radius,
-        search.keyword,
-        search.category,
-      ).catch(() => []),
+  const [standardResults, localSpecialResults] = await Promise.all([
+    Promise.all(
+      standardSearches.map((search) =>
+        fetchNearbyPlaces(
+          latitude,
+          longitude,
+          search.type,
+          radius,
+          search.keyword,
+          search.category,
+        ).catch(() => []),
+      ),
     ),
-  );
+    Promise.all(
+      LOCAL_SPECIAL_SEARCHES.map((search) =>
+        fetchNearbyPlaces(
+          latitude,
+          longitude,
+          search.type,
+          radius,
+          search.keyword,
+          search.category,
+        ).catch(() => []),
+      ),
+    ),
+  ]);
 
   const excluded = new Set(options.excludeIds ?? []);
   const unique = new Map<string, NearbyPlace>();
-  for (const place of results.flat()) {
+  for (const place of standardResults.flat()) {
+    if (excluded.has(place.id)) continue;
+    if (!unique.has(place.id)) unique.set(place.id, place);
+  }
+  for (const place of localSpecialResults.flat()) {
     if (excluded.has(place.id)) continue;
     if (!unique.has(place.id)) unique.set(place.id, place);
   }
 
   const limit = options.limit ?? 12;
-  return [...unique.values()]
+  const ranked = [...unique.values()]
     .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
     .slice(0, limit);
+
+  return enrichLocalSpecialPlaces(ranked);
 }
