@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { geocodeAddress } from "../services/geocode.js";
-import { syncTripDestinationFromLocation } from "../lib/trip-utils.js";
+import { ensureTripLocation, syncTripLocationsFromActivities } from "../lib/trip-utils.js";
 
 const router = Router();
 
@@ -71,35 +71,84 @@ router.post("/", async (req: AuthRequest, res) => {
   }
 });
 
-// POST /api/trips/:tripId/locations – add location (body: { address })
+// POST /api/trips/:tripId/locations/sync-from-activities
+router.post(
+  "/:tripId/locations/sync-from-activities",
+  async (req: AuthRequest, res) => {
+    try {
+      const { tripId } = req.params;
+      const locations = await syncTripLocationsFromActivities(
+        tripId,
+        req.user!.id,
+      );
+      if (!locations) {
+        res.status(404).json({ error: "Trip not found" });
+        return;
+      }
+      res.json(locations);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to sync locations from activities" });
+    }
+  },
+);
+
+// POST /api/trips/:tripId/locations – add location
+// body: { address, locationTitle?, latitude?, longitude? }
 router.post("/:tripId/locations", async (req: AuthRequest, res) => {
   try {
     const { tripId } = req.params;
-    const { address } = req.body;
-    if (!address) {
-      res.status(400).json({ error: "address required" });
+    const { address, locationTitle, latitude, longitude } = req.body;
+    const hasCoords =
+      typeof latitude === "number" &&
+      typeof longitude === "number" &&
+      !Number.isNaN(latitude) &&
+      !Number.isNaN(longitude);
+
+    if (!address && !hasCoords) {
+      res.status(400).json({ error: "address or latitude/longitude required" });
       return;
     }
+
     const trip = await prisma.trip.findFirst({
       where: { id: tripId, userId: req.user!.id },
+      include: { locations: true },
     });
     if (!trip) {
       res.status(404).json({ error: "Trip not found" });
       return;
     }
-    const { latitude, longitude } = await geocodeAddress(address);
-    const count = await prisma.location.count({ where: { tripId } });
-    const location = await prisma.location.create({
-      data: {
-        locationTitle: address,
-        tripId,
-        latitude,
-        longitude,
-        order: count,
+
+    let resolvedLat = latitude;
+    let resolvedLng = longitude;
+    const resolvedTitle =
+      (typeof locationTitle === "string" && locationTitle.trim()) ||
+      (typeof address === "string" && address.trim()) ||
+      "Location";
+
+    if (!hasCoords) {
+      const geocoded = await geocodeAddress(address);
+      resolvedLat = geocoded.latitude;
+      resolvedLng = geocoded.longitude;
+    }
+
+    const location = await ensureTripLocation(
+      tripId,
+      {
+        locationTitle: resolvedTitle,
+        address,
+        latitude: resolvedLat,
+        longitude: resolvedLng,
       },
-    });
-    await syncTripDestinationFromLocation(tripId, latitude, longitude, address);
-    res.status(201).json(location);
+      trip.locations,
+    );
+    if (!location) {
+      res.status(400).json({ error: "Could not resolve location coordinates" });
+      return;
+    }
+
+    const isNew = !trip.locations.some((loc) => loc.id === location.id);
+    res.status(isNew ? 201 : 200).json(location);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to add location" });

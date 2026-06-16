@@ -3,6 +3,7 @@ import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { geocodeAddress } from "../services/geocode.js";
 import { getTravelEstimate } from "../services/distance-matrix.js";
+import { ensureTripLocation } from "../lib/trip-utils.js";
 
 const router = Router({ mergeParams: true });
 
@@ -100,7 +101,14 @@ router.post("/", async (req: AuthRequest, res) => {
       },
     });
 
-    res.status(201).json(activity);
+    const syncedLocation = await ensureTripLocation(tripId, {
+      locationTitle: title,
+      address: trimmedAddress || null,
+      latitude: resolvedLatitude,
+      longitude: resolvedLongitude,
+    });
+
+    res.status(201).json({ ...activity, syncedLocation });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to create activity" });
