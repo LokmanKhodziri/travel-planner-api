@@ -71,6 +71,15 @@ model VerificationToken {
   @@id([identifier, token])
 }
 
+enum ExpenseCategory {
+  TRANSPORT
+  ACCOMMODATION
+  FOOD
+  ACTIVITIES
+  SHOPPING
+  OTHER
+}
+
 model Trip {
   id              String     @id @default(cuid())
   title           String
@@ -86,6 +95,7 @@ model Trip {
 
   locations  Location[]
   activities ItineraryActivity[]
+  expenses   TripExpense[]
 
   createAt DateTime  @default(now())
   updateAt DateTime? @updatedAt
@@ -103,6 +113,7 @@ model ItineraryActivity {
   order       Int      @default(0)
   trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
   tripId      String
+  expenses    TripExpense[]
 
   createAt DateTime  @default(now())
   updateAt DateTime? @updatedAt
@@ -116,6 +127,23 @@ model Location {
   trip           Trip     @relation(fields: [tripId], references: [id])
   tripId         String
   order          Int      @default(0)
+
+  createAt DateTime  @default(now())
+  updateAt DateTime? @updatedAt
+}
+
+model TripExpense {
+  id          String             @id @default(cuid())
+  title       String
+  amount      Float
+  currency    String             @default("MYR")
+  category    ExpenseCategory    @default(OTHER)
+  expenseDate DateTime
+  notes       String?
+  trip        Trip               @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  tripId      String
+  activity    ItineraryActivity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  activityId  String?
 
   createAt DateTime  @default(now())
   updateAt DateTime? @updatedAt
