@@ -15,6 +15,15 @@ enum UserRole {
   ADMIN
 }
 
+enum ExpenseCategory {
+  TRANSPORT
+  ACCOMMODATION
+  FOOD
+  ACTIVITIES
+  SHOPPING
+  OTHER
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -23,6 +32,8 @@ model User {
   role          UserRole  @default(USER)
   emailVerified DateTime?
   image         String?
+  homeCity      String?
+  timezone      String?
   accounts      Account[]
   sessions      Session[]
   trip          Trip[]
@@ -86,6 +97,8 @@ model Trip {
 
   locations  Location[]
   activities ItineraryActivity[]
+  expenses   TripExpense[]
+  budget     TripBudget?
 
   createAt DateTime  @default(now())
   updateAt DateTime? @updatedAt
@@ -116,6 +129,34 @@ model Location {
   trip           Trip     @relation(fields: [tripId], references: [id])
   tripId         String
   order          Int      @default(0)
+
+  createAt DateTime  @default(now())
+  updateAt DateTime? @updatedAt
+}
+
+model TripExpense {
+  id          String          @id @default(cuid())
+  title       String
+  amount      Float
+  currency    String          @default("MYR")
+  category    ExpenseCategory @default(OTHER)
+  expenseDate DateTime
+  notes       String?
+  activityId  String?
+  tripId      String
+  trip        Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  createAt DateTime  @default(now())
+  updateAt DateTime? @updatedAt
+}
+
+model TripBudget {
+  id              String   @id @default(cuid())
+  tripId          String   @unique
+  currency        String   @default("MYR")
+  totalAmount     Float?
+  categoryBudgets Json?
+  trip            Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   createAt DateTime  @default(now())
   updateAt DateTime? @updatedAt
