@@ -7,14 +7,7 @@ const router = Router({ mergeParams: true });
 
 router.use(requireAuth);
 
-const EXPENSE_CATEGORIES = new Set<string>([
-  "TRANSPORT",
-  "ACCOMMODATION",
-  "FOOD",
-  "ACTIVITIES",
-  "SHOPPING",
-  "OTHER",
-]);
+const EXPENSE_CATEGORIES = new Set<string>(Object.values(ExpenseCategory));
 
 function parseExpenseCategory(value: unknown): ExpenseCategory {
   if (typeof value === "string" && EXPENSE_CATEGORIES.has(value)) {
