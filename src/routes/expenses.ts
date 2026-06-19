@@ -9,7 +9,7 @@ router.use(requireAuth);
 
 const EXPENSE_CATEGORIES = new Set<string>(Object.values(ExpenseCategory));
 
-function parseExpenseCategory(value: unknown) {
+function parseExpenseCategory(value: unknown): ExpenseCategory {
   if (typeof value === "string" && EXPENSE_CATEGORIES.has(value)) {
     return value as ExpenseCategory;
   }
@@ -28,6 +28,7 @@ async function getOwnedTrip(tripId: string, userId: string) {
   });
 }
 
+// GET /api/trips/:tripId/expenses
 router.get("/", async (req: AuthRequest, res) => {
   try {
     const tripId = req.params.tripId as string;
@@ -48,6 +49,7 @@ router.get("/", async (req: AuthRequest, res) => {
   }
 });
 
+// POST /api/trips/:tripId/expenses
 router.post("/", async (req: AuthRequest, res) => {
   try {
     const tripId = req.params.tripId as string;
@@ -92,8 +94,7 @@ router.post("/", async (req: AuthRequest, res) => {
             : "MYR",
         category,
         expenseDate: parsedDate,
-        notes:
-          typeof notes === "string" && notes.trim() ? notes.trim() : null,
+        notes: typeof notes === "string" && notes.trim() ? notes.trim() : null,
         tripId,
         activityId: activityId || null,
       },
@@ -105,10 +106,88 @@ router.post("/", async (req: AuthRequest, res) => {
   }
 });
 
+// PATCH /api/trips/:tripId/expenses/:expenseId
+router.patch("/:expenseId", async (req: AuthRequest, res) => {
+  try {
+    const tripId = req.params.tripId as string;
+    const expenseId = req.params.expenseId as string;
+
+    const existing = await prisma.tripExpense.findFirst({
+      where: { id: expenseId, tripId, trip: { userId: req.user!.id } },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Expense not found" });
+      return;
+    }
+
+    const amount =
+      req.body.amount === undefined ? existing.amount : parseAmount(req.body.amount);
+    if (amount == null) {
+      res.status(400).json({ error: "Invalid amount" });
+      return;
+    }
+
+    const expenseDate = req.body.expenseDate
+      ? new Date(req.body.expenseDate)
+      : existing.expenseDate;
+    if (Number.isNaN(expenseDate.getTime())) {
+      res.status(400).json({ error: "Invalid expenseDate" });
+      return;
+    }
+
+    if (req.body.activityId) {
+      const activity = await prisma.itineraryActivity.findFirst({
+        where: { id: req.body.activityId, tripId },
+      });
+      if (!activity) {
+        res.status(400).json({ error: "Linked activity not found on this trip" });
+        return;
+      }
+    }
+
+    const expense = await prisma.tripExpense.update({
+      where: { id: expenseId },
+      data: {
+        title:
+          typeof req.body.title === "string"
+            ? req.body.title.trim() || existing.title
+            : existing.title,
+        amount,
+        currency:
+          typeof req.body.currency === "string" && req.body.currency.trim()
+            ? req.body.currency.trim().toUpperCase()
+            : existing.currency,
+        category:
+          req.body.category !== undefined
+            ? parseExpenseCategory(req.body.category)
+            : existing.category,
+        expenseDate,
+        notes:
+          req.body.notes === undefined
+            ? existing.notes
+            : typeof req.body.notes === "string" && req.body.notes.trim()
+              ? req.body.notes.trim()
+              : null,
+        activityId:
+          req.body.activityId === undefined
+            ? existing.activityId
+            : req.body.activityId || null,
+      },
+    });
+
+    res.json(expense);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed to update expense" });
+  }
+});
+
+// DELETE /api/trips/:tripId/expenses/:expenseId
 router.delete("/:expenseId", async (req: AuthRequest, res) => {
   try {
     const tripId = req.params.tripId as string;
     const expenseId = req.params.expenseId as string;
+
     const existing = await prisma.tripExpense.findFirst({
       where: { id: expenseId, tripId, trip: { userId: req.user!.id } },
     });

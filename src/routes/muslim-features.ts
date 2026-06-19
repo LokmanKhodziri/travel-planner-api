@@ -66,18 +66,18 @@ router.get("/prayer-times", async (req: AuthRequest, res) => {
   }
 });
 
-// GET /api/trips/:tripId/nearby/mosques?radius=5000
+// GET /api/trips/:tripId/nearby/mosques?radius=5000&latitude=&longitude=
 router.get("/nearby/mosques", async (req: AuthRequest, res) => {
   try {
     const context = await getTripCoordsOrError(req, res);
     if (!context) return;
 
+    const queryLat = Number(req.query.latitude);
+    const queryLng = Number(req.query.longitude);
+    const latitude = Number.isFinite(queryLat) ? queryLat : context.coords.latitude;
+    const longitude = Number.isFinite(queryLng) ? queryLng : context.coords.longitude;
     const radius = Number(req.query.radius) || 5000;
-    const places = await findNearbyMosques(
-      context.coords.latitude,
-      context.coords.longitude,
-      radius,
-    );
+    const places = await findNearbyMosques(latitude, longitude, radius);
 
     res.json(places);
   } catch (e) {
@@ -128,6 +128,11 @@ router.get("/activity-recommendations", async (req: AuthRequest, res) => {
     }
 
     const radius = Number(req.query.radius) || 5000;
+    const excludeIds =
+      typeof req.query.exclude === "string" && req.query.exclude.trim()
+        ? req.query.exclude.split(",").map((id) => id.trim()).filter(Boolean)
+        : [];
+    const extended = req.query.extended === "true" || req.query.extended === "1";
     const rows = await Promise.all(
       trip.locations.slice(0, 5).map(async (location) => {
         try {
@@ -135,6 +140,7 @@ router.get("/activity-recommendations", async (req: AuthRequest, res) => {
             location.latitude,
             location.longitude,
             radius,
+            { excludeIds, extended },
           );
 
           return {
@@ -165,7 +171,7 @@ router.get("/activity-recommendations", async (req: AuthRequest, res) => {
     res.json({
       radius,
       source: "Google Places live search",
-      note: "Recommendations are based on the first 5 saved trip locations and are not stored until added as activities.",
+      note: "Recommendations are based on your saved trip locations. Places already in your itinerary are hidden automatically.",
       rows,
     });
   } catch (e) {

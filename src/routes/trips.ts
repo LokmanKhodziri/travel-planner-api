@@ -1,10 +1,8 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
-import {
-  ensureTripLocation,
-  syncTripLocationsFromActivities,
-} from "../lib/trip-utils.js";
+import { geocodeAddress } from "../services/geocode.js";
+import { ensureTripLocation, syncTripLocationsFromActivities } from "../lib/trip-utils.js";
 
 const router = Router();
 
@@ -121,18 +119,26 @@ router.post("/:tripId/locations", async (req: AuthRequest, res) => {
       return;
     }
 
+    let resolvedLat = latitude;
+    let resolvedLng = longitude;
     const resolvedTitle =
       (typeof locationTitle === "string" && locationTitle.trim()) ||
       (typeof address === "string" && address.trim()) ||
       "Location";
+
+    if (!hasCoords) {
+      const geocoded = await geocodeAddress(address);
+      resolvedLat = geocoded.latitude;
+      resolvedLng = geocoded.longitude;
+    }
 
     const location = await ensureTripLocation(
       tripId,
       {
         locationTitle: resolvedTitle,
         address,
-        latitude: hasCoords ? latitude : undefined,
-        longitude: hasCoords ? longitude : undefined,
+        latitude: resolvedLat,
+        longitude: resolvedLng,
       },
       trip.locations,
     );

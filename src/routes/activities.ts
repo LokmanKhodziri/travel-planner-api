@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { geocodeAddress } from "../services/geocode.js";
-import { getTravelEstimate } from "../services/distance-matrix.js";
+import { getSmartTravelEstimate, parseTravelMode } from "../services/distance-matrix.js";
 import { ensureTripLocation } from "../lib/trip-utils.js";
 
 const router = Router({ mergeParams: true });
@@ -115,19 +115,32 @@ router.post("/", async (req: AuthRequest, res) => {
   }
 });
 
-// GET /api/trips/:tripId/activities/travel-times?date=YYYY-MM-DD
+// GET /api/trips/:tripId/activities/travel-times?date=YYYY-MM-DD&mode=driving|transit|walking
 router.get("/travel-times", async (req: AuthRequest, res) => {
   try {
     const tripId = req.params.tripId as string;
     const date = typeof req.query.date === "string" ? req.query.date : null;
+    const preferredMode = parseTravelMode(req.query.mode);
+    const orderParam =
+      typeof req.query.order === "string" ? req.query.order.trim() : "";
 
     const activities = await prisma.itineraryActivity.findMany({
       where: { tripId, trip: { userId: req.user!.id } },
       orderBy: { startTime: "asc" },
     });
-    const dayActivities = date
+    let dayActivities = date
       ? activities.filter((activity) => activityDateKey(activity) === date)
       : activities;
+
+    if (orderParam) {
+      const orderIds = orderParam.split(",").map((id) => id.trim()).filter(Boolean);
+      const byId = new Map(dayActivities.map((activity) => [activity.id, activity]));
+      dayActivities = orderIds
+        .map((id) => byId.get(id))
+        .filter((activity): activity is (typeof dayActivities)[number] =>
+          Boolean(activity),
+        );
+    }
 
     const segments = await Promise.all(
       dayActivities.slice(0, -1).map(async (fromActivity, index) => {
@@ -154,7 +167,7 @@ router.get("/travel-times", async (req: AuthRequest, res) => {
         }
 
         try {
-          const estimate = await getTravelEstimate(
+          const estimate = await getSmartTravelEstimate(
             {
               latitude: fromActivity.latitude,
               longitude: fromActivity.longitude,
@@ -163,6 +176,7 @@ router.get("/travel-times", async (req: AuthRequest, res) => {
               latitude: toActivity.latitude,
               longitude: toActivity.longitude,
             },
+            preferredMode,
           );
 
           return { ...baseSegment, estimate, error: null };
@@ -176,7 +190,7 @@ router.get("/travel-times", async (req: AuthRequest, res) => {
       }),
     );
 
-    res.json({ date, segments });
+    res.json({ date, mode: preferredMode, segments });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to fetch travel times" });

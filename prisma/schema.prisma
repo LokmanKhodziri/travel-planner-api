@@ -116,6 +116,7 @@ model ItineraryActivity {
   order       Int      @default(0)
   trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
   tripId      String
+  expenses    TripExpense[]
 
   createAt DateTime  @default(now())
   updateAt DateTime? @updatedAt
@@ -135,16 +136,17 @@ model Location {
 }
 
 model TripExpense {
-  id          String          @id @default(cuid())
+  id          String             @id @default(cuid())
   title       String
   amount      Float
-  currency    String          @default("MYR")
-  category    ExpenseCategory @default(OTHER)
+  currency    String             @default("MYR")
+  category    ExpenseCategory    @default(OTHER)
   expenseDate DateTime
   notes       String?
-  activityId  String?
+  trip        Trip               @relation(fields: [tripId], references: [id], onDelete: Cascade)
   tripId      String
-  trip        Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  activity    ItineraryActivity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  activityId  String?
 
   createAt DateTime  @default(now())
   updateAt DateTime? @updatedAt
