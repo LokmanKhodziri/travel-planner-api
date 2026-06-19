@@ -10,6 +10,7 @@ import locationsRoutes from "./routes/locations.js";
 import muslimFeaturesRoutes from "./routes/muslim-features.js";
 import activitiesRoutes from "./routes/activities.js";
 import expensesRoutes from "./routes/expenses.js";
+import budgetRoutes from "./routes/budget.js";
 import placesRoutes from "./routes/places.js";
 import adminRoutes from "./routes/admin.js";
 
@@ -63,6 +64,7 @@ app.use("/api/trips", tripsRoutes);
 app.use("/api/trips/:tripId", muslimFeaturesRoutes);
 app.use("/api/trips/:tripId/activities", activitiesRoutes);
 app.use("/api/trips/:tripId/expenses", expensesRoutes);
+app.use("/api/trips/:tripId/budget", budgetRoutes);
 app.use("/api/locations", locationsRoutes);
 app.use("/api/places", placesRoutes);
 app.use("/api/admin", adminRoutes);

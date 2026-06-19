@@ -7,14 +7,7 @@ const router = Router({ mergeParams: true });
 
 router.use(requireAuth);
 
-const EXPENSE_CATEGORIES = new Set<string>([
-  "TRANSPORT",
-  "ACCOMMODATION",
-  "FOOD",
-  "ACTIVITIES",
-  "SHOPPING",
-  "OTHER",
-]);
+const EXPENSE_CATEGORIES = new Set<string>(Object.values(ExpenseCategory));
 
 function parseExpenseCategory(value: unknown): ExpenseCategory {
   if (typeof value === "string" && EXPENSE_CATEGORIES.has(value)) {
@@ -49,7 +42,6 @@ router.get("/", async (req: AuthRequest, res) => {
       where: { tripId },
       orderBy: [{ expenseDate: "desc" }, { createAt: "desc" }],
     });
-
     res.json(expenses);
   } catch (e) {
     console.error(e);
@@ -107,7 +99,6 @@ router.post("/", async (req: AuthRequest, res) => {
         activityId: activityId || null,
       },
     });
-
     res.status(201).json(expense);
   } catch (e) {
     console.error(e);
