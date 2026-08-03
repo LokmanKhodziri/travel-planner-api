@@ -71,6 +71,36 @@ router.post("/", async (req: AuthRequest, res) => {
   }
 });
 
+// DELETE /api/trips/:id – delete trip and related data
+router.delete("/:id", async (req: AuthRequest, res) => {
+  try {
+    const tripId = req.params.id as string;
+    const trip = await prisma.trip.findFirst({
+      where: {
+        id: tripId,
+        ...(req.user!.role === "ADMIN" ? {} : { userId: req.user!.id }),
+      },
+    });
+
+    if (!trip) {
+      res.status(404).json({ error: "Trip not found" });
+      return;
+    }
+
+    // Location has no onDelete cascade — remove it before deleting the trip.
+    // Activities, expenses, and budget cascade from Trip.
+    await prisma.$transaction([
+      prisma.location.deleteMany({ where: { tripId } }),
+      prisma.trip.delete({ where: { id: tripId } }),
+    ]);
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed to delete trip" });
+  }
+});
+
 // POST /api/trips/:tripId/locations/sync-from-activities
 router.post(
   "/:tripId/locations/sync-from-activities",
