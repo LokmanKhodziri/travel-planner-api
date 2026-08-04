@@ -1,4 +1,4 @@
-// Travel Planner API - Prisma schema
+// Musafir-Go API - Prisma schema
 // https://pris.ly/d/prisma-schema
 
 generator client {
@@ -127,7 +127,7 @@ model Location {
   locationTitle  String
   latitude       Float
   longitude      Float
-  trip           Trip     @relation(fields: [tripId], references: [id])
+  trip           Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
   tripId         String
   order          Int      @default(0)
 

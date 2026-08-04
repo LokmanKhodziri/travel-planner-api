@@ -1,6 +1,6 @@
-# Travel Planner API
+# Musafir-Go API
 
-Express backend for the **Muslim-Friendly Travel Planner**. Handles authentication, trips, locations, timed activities, expenses & budget, prayer times, nearby mosques/Halal, activity recommendations, and admin reporting.
+Express backend for **Musafir-Go**, a Muslim-friendly travel planner. Handles authentication, trips, locations, timed activities, expenses & budget, prayer times, nearby mosques/Halal, activity recommendations, and admin reporting.
 
 **Stack:** Express · Prisma 7 · PostgreSQL · Passport (Google/GitHub OAuth) · JWT sessions
 
@@ -106,6 +106,7 @@ All `/api/*` routes (except health) require a valid JWT via:
 | `GET` | `/api/trips` | List current user's trips |
 | `GET` | `/api/trips/:id` | Trip with locations and activities |
 | `POST` | `/api/trips` | Create trip (`title`, `description`, `startDate`, `endDate`, optional `imageUrl`) |
+| `DELETE` | `/api/trips/:id` | Delete trip (and related locations, activities, expenses, budget) |
 | `POST` | `/api/trips/:tripId/locations` | Add location (`address` and/or `latitude`/`longitude`, optional `locationTitle`) |
 | `POST` | `/api/trips/:tripId/locations/sync-from-activities` | Sync saved places from activity coordinates |
 
@@ -198,5 +199,5 @@ prisma/
 
 ## Related repos
 
-- **Frontend:** [../travel-planner-web](../travel-planner-web) — Next.js UI
+- **Frontend:** [../travel-planner-web](../travel-planner-web) — Musafir-Go Next.js UI
 - **Plan:** [../PROJECT_PLAN.md](../PROJECT_PLAN.md) — development timeline and module checklist
