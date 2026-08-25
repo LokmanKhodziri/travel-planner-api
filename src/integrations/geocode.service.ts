@@ -1,4 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
+import { AppCacheService } from "../cache/app-cache.service";
+import { CACHE_TTL, cacheCoord } from "../cache/cache.constants";
 
 interface AddressComponent {
   long_name: string;
@@ -13,11 +15,25 @@ export interface GeocodeResult {
 
 @Injectable()
 export class GeocodeService {
+  constructor(@Optional() private readonly cache?: AppCacheService) {}
   private get apiKey() {
     return process.env.GOOGLE_MAPS_API_KEY;
   }
 
   async getCountyFromCoordinates(
+    latitude: number,
+    longitude: number,
+  ): Promise<GeocodeResult> {
+    const load = () => this.fetchCountyFromCoordinates(latitude, longitude);
+    if (!this.cache) return load();
+    return this.cache.remember(
+      `geocode:reverse:${cacheCoord(latitude)}:${cacheCoord(longitude)}`,
+      CACHE_TTL.geocode,
+      load,
+    );
+  }
+
+  private async fetchCountyFromCoordinates(
     latitude: number,
     longitude: number,
   ): Promise<GeocodeResult> {
@@ -40,6 +56,19 @@ export class GeocodeService {
   }
 
   async geocodeAddress(address: string): Promise<{
+    latitude: number;
+    longitude: number;
+  }> {
+    const load = () => this.fetchGeocodeAddress(address);
+    if (!this.cache) return load();
+    return this.cache.remember(
+      `geocode:address:${address.trim().toLowerCase()}`,
+      CACHE_TTL.geocode,
+      load,
+    );
+  }
+
+  private async fetchGeocodeAddress(address: string): Promise<{
     latitude: number;
     longitude: number;
   }> {

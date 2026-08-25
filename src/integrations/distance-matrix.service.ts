@@ -1,4 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
+import { AppCacheService } from "../cache/app-cache.service";
+import { CACHE_TTL, cacheCoord } from "../cache/cache.constants";
 import { distanceMeters } from "../common/geo";
 
 export type TravelMode = "walking" | "driving" | "transit";
@@ -49,11 +51,26 @@ export function resolveTravelMode(
 
 @Injectable()
 export class DistanceMatrixService {
+  constructor(@Optional() private readonly cache?: AppCacheService) {}
   private get apiKey() {
     return process.env.GOOGLE_MAPS_API_KEY ?? process.env.GOOGLE_PLACES_API_KEY;
   }
 
   async getTravelEstimate(
+    origin: { latitude: number; longitude: number },
+    destination: { latitude: number; longitude: number },
+    mode: TravelMode,
+  ): Promise<Omit<TravelEstimate, "autoWalk">> {
+    const load = () => this.fetchTravelEstimate(origin, destination, mode);
+    if (!this.cache) return load();
+    return this.cache.remember(
+      `travel:${mode}:${cacheCoord(origin.latitude)}:${cacheCoord(origin.longitude)}:${cacheCoord(destination.latitude)}:${cacheCoord(destination.longitude)}`,
+      CACHE_TTL.travelEstimate,
+      load,
+    );
+  }
+
+  private async fetchTravelEstimate(
     origin: { latitude: number; longitude: number },
     destination: { latitude: number; longitude: number },
     mode: TravelMode,

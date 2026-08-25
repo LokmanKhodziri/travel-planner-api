@@ -2,7 +2,7 @@
 
 NestJS backend for **Musafir-Go**, a Muslim-friendly travel planner. Handles authentication, trips, locations, timed activities, expenses & budget, prayer times, nearby mosques/Halal, activity recommendations, and admin reporting.
 
-**Stack:** NestJS · Prisma 7 · PostgreSQL · Passport (Google/GitHub OAuth) · JWT sessions · Jest + Supertest
+**Stack:** NestJS · Prisma 7 · PostgreSQL · in-memory cache · Passport (Google/GitHub OAuth) · JWT sessions · Jest + Supertest
 
 ## Prerequisites
 
@@ -46,8 +46,10 @@ NestJS backend for **Musafir-Go**, a Muslim-friendly travel planner. Handles aut
 | `npm run db:push` | Push schema to DB (no migration files) |
 | `npm run db:migrate` | Run migrations (`prisma migrate deploy`) |
 | `npm run db:studio` | Open Prisma Studio |
-| `npm test` | Unit tests (Jest) |
-| `npm run test:e2e` | HTTP tests (Supertest) |
+| `npm test` | Unit tests (Jest, mocked Prisma) |
+| `npm run test:e2e` | HTTP tests against a real Postgres database |
+| `npm run test:db:up` | Start Docker Postgres for e2e (`localhost:5433`) |
+| `npm run test:db:down` | Stop the Docker test database |
 | `npm run test:cov` | Unit tests with coverage |
 
 ## Environment variables
@@ -67,6 +69,7 @@ NestJS backend for **Musafir-Go**, a Muslim-friendly travel planner. Handles aut
 | `GOOGLE_MAPS_API_KEY` | For maps features | Geocoding + Places API |
 | `ALADHAN_API_BASE` | No | Prayer times API (default `https://api.aladhan.com/v1`) |
 | `ADMIN_EMAILS` | No | Comma-separated emails granted `ADMIN` role (default `admin123@travel.com`) |
+| `TEST_DATABASE_URL` | For e2e | Optional Postgres URL for tests. If unset, e2e starts embedded Postgres. |
 
 \*Required for OAuth and frontend integration in production.
 
@@ -201,15 +204,45 @@ src/
 ├── places/
 ├── admin/
 ├── integrations/           # Google Maps, Places, Aladhan, distance matrix
+├── cache/                  # in-memory cache for external APIs
 ├── prisma/
 └── common/                 # guards, filters, geo/validation helpers
 test/
-└── app.e2e-spec.ts         # HTTP contract tests
+├── app.e2e-spec.ts         # HTTP tests against real Postgres
+└── test-database.ts        # embedded Postgres or TEST_DATABASE_URL
+docker-compose.test.yml     # optional Docker Postgres on port 5433
 prisma/
 └── schema.prisma
 ```
 
 HTTP paths and JSON responses are unchanged from the previous Express API, so the existing Next.js frontend keeps working.
+
+## Testing
+
+Unit tests (`npm test`) mock Prisma. E2E tests (`npm run test:e2e`) talk to a **real PostgreSQL** database:
+
+1. If `TEST_DATABASE_URL` is set, that database is used (after `prisma db push`).
+2. Otherwise an **embedded Postgres 16** cluster is started for the test run, then torn down.
+3. Optional Docker database: `npm run test:db:up`, then:
+
+```bash
+TEST_DATABASE_URL="postgresql://musafir:musafir@localhost:5433/musafir_test" npm run test:e2e
+```
+
+## Caching
+
+External APIs (Google Maps/Places, Aladhan) are cached in memory so repeat requests for the same place, prayer date, or travel segment do not hit the network again.
+
+| Data | TTL |
+|------|-----|
+| Prayer times | 12 hours |
+| Geocoding | 7 days |
+| Nearby mosques / Halal / activities | 30 minutes |
+| Place autocomplete | 10 minutes |
+| Place opening hours | 6 hours |
+| Travel estimates | 15 minutes |
+
+Trips, expenses, and auth are **not** cached — those change per user and must stay fresh from Postgres.
 
 ## Related repos
 

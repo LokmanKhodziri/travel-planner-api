@@ -1,4 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
+import { AppCacheService } from "../cache/app-cache.service";
+import { CACHE_TTL, cacheCoord } from "../cache/cache.constants";
 
 export interface PrayerTimings {
   date: string;
@@ -30,6 +32,7 @@ export function toAladhanDate(date: string): string {
 
 @Injectable()
 export class AladhanService {
+  constructor(@Optional() private readonly cache?: AppCacheService) {}
   private get baseUrl() {
     return (
       process.env.ALADHAN_API_BASE ??
@@ -39,6 +42,21 @@ export class AladhanService {
   }
 
   async getPrayerTimings(
+    latitude: number,
+    longitude: number,
+    date: string,
+  ): Promise<PrayerTimings> {
+    const load = () => this.fetchPrayerTimings(latitude, longitude, date);
+    if (!this.cache) return load();
+
+    return this.cache.remember(
+      `prayer:${cacheCoord(latitude)}:${cacheCoord(longitude)}:${toAladhanDate(date)}`,
+      CACHE_TTL.prayerTimes,
+      load,
+    );
+  }
+
+  private async fetchPrayerTimings(
     latitude: number,
     longitude: number,
     date: string,

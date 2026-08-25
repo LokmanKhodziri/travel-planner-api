@@ -1,4 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
+import { AppCacheService } from "../cache/app-cache.service";
+import { CACHE_TTL, cacheCoord } from "../cache/cache.constants";
 
 const PLACES_BASE_URL =
   "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
@@ -73,6 +75,7 @@ const EXTENDED_ACTIVITY_SEARCHES = [
 
 @Injectable()
 export class PlacesService {
+  constructor(@Optional() private readonly cache?: AppCacheService) {}
   private get apiKey() {
     return process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
   }
@@ -146,6 +149,16 @@ export class PlacesService {
   }
 
   async searchPlaces(input: string): Promise<PlaceSuggestion[]> {
+    const load = () => this.fetchPlaceSuggestions(input);
+    if (!this.cache) return load();
+    return this.cache.remember(
+      `places:search:${input.trim().toLowerCase()}`,
+      CACHE_TTL.placesSearch,
+      load,
+    );
+  }
+
+  private async fetchPlaceSuggestions(input: string): Promise<PlaceSuggestion[]> {
     const key = this.apiKey;
     if (!key) throw new Error("Google Places API key is not configured");
 
@@ -169,6 +182,31 @@ export class PlacesService {
   }
 
   private async fetchNearbyPlaces(
+    latitude: number,
+    longitude: number,
+    type: string,
+    radius = 5000,
+    keyword?: string,
+    category?: string,
+  ): Promise<NearbyPlace[]> {
+    const load = () =>
+      this.requestNearbyPlaces(
+        latitude,
+        longitude,
+        type,
+        radius,
+        keyword,
+        category,
+      );
+    if (!this.cache) return load();
+    return this.cache.remember(
+      `places:nearby:${cacheCoord(latitude)}:${cacheCoord(longitude)}:${type}:${radius}:${keyword ?? ""}:${category ?? ""}`,
+      CACHE_TTL.placesNearby,
+      load,
+    );
+  }
+
+  private async requestNearbyPlaces(
     latitude: number,
     longitude: number,
     type: string,
@@ -205,6 +243,16 @@ export class PlacesService {
   }
 
   private async fetchPlaceOpeningHours(placeId: string) {
+    const load = () => this.requestPlaceOpeningHours(placeId);
+    if (!this.cache) return load();
+    return this.cache.remember(
+      `places:hours:${placeId}`,
+      CACHE_TTL.placeDetails,
+      load,
+    );
+  }
+
+  private async requestPlaceOpeningHours(placeId: string) {
     const key = this.apiKey;
     if (!key) throw new Error("Google Places API key is not configured");
 

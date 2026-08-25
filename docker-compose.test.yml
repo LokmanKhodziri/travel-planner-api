@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: musafir-go-test-db
+    environment:
+      POSTGRES_USER: musafir
+      POSTGRES_PASSWORD: musafir
+      POSTGRES_DB: musafir_test
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U musafir -d musafir_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15

@@ -7,6 +7,7 @@ import { BudgetModule } from "./budget/budget.module";
 import { ExpensesModule } from "./expenses/expenses.module";
 import { HealthController } from "./health/health.controller";
 import { IntegrationsModule } from "./integrations/integrations.module";
+import { AppCacheModule } from "./cache/app-cache.module";
 import { LocationsModule } from "./locations/locations.module";
 import { MuslimFeaturesModule } from "./muslim-features/muslim-features.module";
 import { PlacesModule } from "./places/places.module";
@@ -15,8 +16,12 @@ import { TripsModule } from "./trips/trips.module";
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      ignoreEnvFile: process.env.NODE_ENV === "test",
+    }),
     PrismaModule,
+    AppCacheModule,
     IntegrationsModule,
     AuthModule,
     TripsModule,

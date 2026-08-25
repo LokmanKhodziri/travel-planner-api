@@ -1,7 +1,9 @@
 {
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": "..",
-  "setupFiles": ["<rootDir>/src/testing/setup.ts"],
+  "maxWorkers": 1,
+  "forceExit": true,
+  "testTimeout": 120000,
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
