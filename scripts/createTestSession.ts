@@ -1,8 +1,21 @@
 import "dotenv/config";
-import { prisma } from "../src/lib/prisma.js";
-import { signToken, getSessionExpiration } from "../src/middleware/auth.js";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
+import { TokenService } from "../src/auth/token.service";
+
+function createPrisma() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is not set");
+  }
+  return new PrismaClient({
+    adapter: new PrismaPg({ connectionString }),
+  });
+}
 
 async function main() {
+  const prisma = createPrisma();
+  const tokens = new TokenService();
   const email = process.env.TEST_USER_EMAIL ?? "dev+test@example.com";
 
   let user = await prisma.user.findUnique({ where: { email } });
@@ -10,13 +23,13 @@ async function main() {
     user = await prisma.user.create({ data: { email, name: "Dev Tester" } });
   }
 
-  const token = signToken(user.id);
+  const token = tokens.sign(user.id);
 
   await prisma.session.create({
     data: {
       sessionToken: token,
       userId: user.id,
-      expires: getSessionExpiration(),
+      expires: tokens.getSessionExpiration(),
     },
   });
 
@@ -31,6 +44,7 @@ async function main() {
   });
 
   console.log(JSON.stringify({ token, tripId: trip.id }));
+  await prisma.$disconnect();
 }
 
 main()

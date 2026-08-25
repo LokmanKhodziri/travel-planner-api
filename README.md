@@ -1,8 +1,8 @@
 # Musafir-Go API
 
-Express backend for **Musafir-Go**, a Muslim-friendly travel planner. Handles authentication, trips, locations, timed activities, expenses & budget, prayer times, nearby mosques/Halal, activity recommendations, and admin reporting.
+NestJS backend for **Musafir-Go**, a Muslim-friendly travel planner. Handles authentication, trips, locations, timed activities, expenses & budget, prayer times, nearby mosques/Halal, activity recommendations, and admin reporting.
 
-**Stack:** Express · Prisma 7 · PostgreSQL · Passport (Google/GitHub OAuth) · JWT sessions
+**Stack:** NestJS · Prisma 7 · PostgreSQL · Passport (Google/GitHub OAuth) · JWT sessions · Jest + Supertest
 
 ## Prerequisites
 
@@ -39,13 +39,16 @@ Express backend for **Musafir-Go**, a Muslim-friendly travel planner. Handles au
 
 | Script | Description |
 |--------|-------------|
-| `npm run dev` | Hot-reload dev server (`tsx watch`) |
-| `npm run build` | `prisma generate` + TypeScript compile |
-| `npm start` | Run compiled `dist/index.js` |
+| `npm run dev` | Hot-reload NestJS dev server |
+| `npm run build` | `prisma generate` + NestJS compile |
+| `npm start` | Run compiled `dist/main.js` |
 | `npm run db:generate` | Regenerate Prisma client |
 | `npm run db:push` | Push schema to DB (no migration files) |
 | `npm run db:migrate` | Run migrations (`prisma migrate deploy`) |
 | `npm run db:studio` | Open Prisma Studio |
+| `npm test` | Unit tests (Jest) |
+| `npm run test:e2e` | HTTP tests (Supertest) |
+| `npm run test:cov` | Unit tests with coverage |
 
 ## Environment variables
 
@@ -186,16 +189,27 @@ Categories: `TRANSPORT`, `ACCOMMODATION`, `FOOD`, `ACTIVITIES`, `SHOPPING`, `OTH
 
 ```
 src/
-├── app.ts              # Express app + route mounting
-├── index.ts            # Server entry
-├── config/passport.ts  # OAuth strategies
-├── middleware/auth.ts  # JWT + session + admin guard
-├── routes/             # Route handlers
-├── services/           # aladhan, geocode, places, distance-matrix, password
-└── lib/                # prisma, trip-utils
+├── main.ts                 # NestJS bootstrap, CORS, cookies
+├── app.module.ts
+├── auth/                   # signup/login/OAuth/profile
+├── trips/                  # trips + location helpers
+├── locations/
+├── activities/
+├── expenses/
+├── budget/
+├── muslim-features/        # prayer times, mosques, Halal, recommendations
+├── places/
+├── admin/
+├── integrations/           # Google Maps, Places, Aladhan, distance matrix
+├── prisma/
+└── common/                 # guards, filters, geo/validation helpers
+test/
+└── app.e2e-spec.ts         # HTTP contract tests
 prisma/
-└── schema.prisma       # Database models
+└── schema.prisma
 ```
+
+HTTP paths and JSON responses are unchanged from the previous Express API, so the existing Next.js frontend keeps working.
 
 ## Related repos
 

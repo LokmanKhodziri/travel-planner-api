@@ -1,7 +1,19 @@
 import "dotenv/config";
-import { prisma } from "../src/lib/prisma.js";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
+
+function createPrisma() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is not set");
+  }
+  return new PrismaClient({
+    adapter: new PrismaPg({ connectionString }),
+  });
+}
 
 async function main() {
+  const prisma = createPrisma();
   const trip = await prisma.trip.findFirst({
     where: { title: "Dev Test Trip" },
   });
@@ -19,6 +31,7 @@ async function main() {
   });
 
   console.log(JSON.stringify({ tripId: trip.id, locationId: location.id }));
+  await prisma.$disconnect();
 }
 
 main()
