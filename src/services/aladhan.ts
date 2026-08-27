@@ -1,3 +1,10 @@
+import {
+  CACHE_TTL_MS,
+  cached,
+  fetchWithTimeout,
+  roundCoord,
+} from "../lib/ttl-cache.js";
+
 const ALADHAN_API_URL =
   process.env.ALADHAN_API_URL ?? "https://api.aladhan.com/v1";
 
@@ -43,24 +50,34 @@ export async function getPrayerTimings(
   date: string,
 ): Promise<PrayerTimings> {
   const aladhanDate = toAladhanDate(date);
-  const response = await fetch(
-    `${ALADHAN_API_URL}/timings/${encodeURIComponent(aladhanDate)}?latitude=${latitude}&longitude=${longitude}&method=2`,
-  );
-  if (!response.ok) throw new Error("Failed to fetch prayer timings");
-  const data = (await response.json()) as AladhanTimingResponse;
-  const timings = data.data.timings;
+  const cacheKey = [
+    "prayer",
+    roundCoord(latitude),
+    roundCoord(longitude),
+    aladhanDate,
+    "method2",
+  ].join(":");
 
-  return {
-    date: data.data.date.gregorian.date,
-    timezone: data.data.meta.timezone,
-    timings: {
-      Fajr: cleanTime(timings.Fajr),
-      Dhuhr: cleanTime(timings.Dhuhr),
-      Asr: cleanTime(timings.Asr),
-      Maghrib: cleanTime(timings.Maghrib),
-      Isha: cleanTime(timings.Isha),
-    },
-  };
+  return cached(cacheKey, CACHE_TTL_MS.prayer, async () => {
+    const response = await fetchWithTimeout(
+      `${ALADHAN_API_URL}/timings/${encodeURIComponent(aladhanDate)}?latitude=${latitude}&longitude=${longitude}&method=2`,
+    );
+    if (!response.ok) throw new Error("Failed to fetch prayer timings");
+    const data = (await response.json()) as AladhanTimingResponse;
+    const timings = data.data.timings;
+
+    return {
+      date: data.data.date.gregorian.date,
+      timezone: data.data.meta.timezone,
+      timings: {
+        Fajr: cleanTime(timings.Fajr),
+        Dhuhr: cleanTime(timings.Dhuhr),
+        Asr: cleanTime(timings.Asr),
+        Maghrib: cleanTime(timings.Maghrib),
+        Isha: cleanTime(timings.Isha),
+      },
+    };
+  });
 }
 
 export function listOrderedPrayers(timings: PrayerTimings["timings"]) {

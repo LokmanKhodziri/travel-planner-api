@@ -1,3 +1,10 @@
+import {
+  CACHE_TTL_MS,
+  cached,
+  fetchWithTimeout,
+  roundCoord,
+} from "../lib/ttl-cache.js";
+
 function getGooglePlacesApiKey() {
   return process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
 }
@@ -118,21 +125,28 @@ export async function searchPlaces(input: string): Promise<PlaceSuggestion[]> {
   const key = getGooglePlacesApiKey();
   if (!key) throw new Error("Google Places API key is not configured");
 
-  const params = new URLSearchParams({ input, key });
-  const url = `${AUTOCOMPLETE_BASE_URL}?${params.toString()}`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error("Failed to fetch place suggestions");
-  const data = await response.json();
+  const normalized = input.trim().toLowerCase();
+  return cached(
+    `places:autocomplete:${normalized}`,
+    CACHE_TTL_MS.autocomplete,
+    async () => {
+      const params = new URLSearchParams({ input: input.trim(), key });
+      const url = `${AUTOCOMPLETE_BASE_URL}?${params.toString()}`;
+      const response = await fetchWithTimeout(url);
+      if (!response.ok) throw new Error("Failed to fetch place suggestions");
+      const data = await response.json();
 
-  if (data.status !== "OK") {
-    if (data.status === "ZERO_RESULTS") return [];
-    const message = data.error_message
-      ? `${data.status}: ${data.error_message}`
-      : data.status;
-    throw new Error(`Google Places API error: ${message}`);
-  }
+      if (data.status !== "OK") {
+        if (data.status === "ZERO_RESULTS") return [];
+        const message = data.error_message
+          ? `${data.status}: ${data.error_message}`
+          : data.status;
+        throw new Error(`Google Places API error: ${message}`);
+      }
 
-  return (data.predictions || []).map(buildPlaceSuggestion);
+      return (data.predictions || []).map(buildPlaceSuggestion);
+    },
+  );
 }
 
 async function fetchNearbyPlaces(
@@ -146,28 +160,42 @@ async function fetchNearbyPlaces(
   const key = getGooglePlacesApiKey();
   if (!key) throw new Error("Google Places API key is not configured");
 
-  const params = new URLSearchParams({
-    location: `${latitude},${longitude}`,
-    radius: String(radius),
+  const cacheKey = [
+    "places:nearby",
     type,
-    key,
+    keyword ?? "",
+    category ?? "",
+    roundCoord(latitude),
+    roundCoord(longitude),
+    String(radius),
+  ].join(":");
+
+  return cached(cacheKey, CACHE_TTL_MS.places, async () => {
+    const params = new URLSearchParams({
+      location: `${latitude},${longitude}`,
+      radius: String(radius),
+      type,
+      key,
+    });
+    if (keyword) params.set("keyword", keyword);
+
+    const url = `${PLACES_BASE_URL}?${params.toString()}`;
+    const response = await fetchWithTimeout(url);
+    if (!response.ok) throw new Error("Failed to fetch nearby places");
+    const data = await response.json();
+
+    if (data.status !== "OK") {
+      if (data.status === "ZERO_RESULTS") return [];
+      const message = data.error_message
+        ? `${data.status}: ${data.error_message}`
+        : data.status;
+      throw new Error(`Google Places API error: ${message}`);
+    }
+
+    return (data.results || []).map((place: any) =>
+      buildPlaceResult(place, category),
+    );
   });
-  if (keyword) params.set("keyword", keyword);
-
-  const url = `${PLACES_BASE_URL}?${params.toString()}`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error("Failed to fetch nearby places");
-  const data = await response.json();
-
-  if (data.status !== "OK") {
-    if (data.status === "ZERO_RESULTS") return [];
-    const message = data.error_message
-      ? `${data.status}: ${data.error_message}`
-      : data.status;
-    throw new Error(`Google Places API error: ${message}`);
-  }
-
-  return (data.results || []).map((place: any) => buildPlaceResult(place, category));
 }
 
 async function fetchPlaceOpeningHours(
@@ -176,25 +204,31 @@ async function fetchPlaceOpeningHours(
   const key = getGooglePlacesApiKey();
   if (!key) throw new Error("Google Places API key is not configured");
 
-  const params = new URLSearchParams({
-    place_id: placeId,
-    fields: "opening_hours",
-    key,
-  });
-  const url = `${PLACE_DETAILS_BASE_URL}?${params.toString()}`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error("Failed to fetch place opening hours");
-  const data = await response.json();
+  return cached(
+    `places:details:${placeId}`,
+    CACHE_TTL_MS.placeDetails,
+    async () => {
+      const params = new URLSearchParams({
+        place_id: placeId,
+        fields: "opening_hours",
+        key,
+      });
+      const url = `${PLACE_DETAILS_BASE_URL}?${params.toString()}`;
+      const response = await fetchWithTimeout(url);
+      if (!response.ok) throw new Error("Failed to fetch place opening hours");
+      const data = await response.json();
 
-  if (data.status !== "OK") {
-    if (data.status === "NOT_FOUND") return undefined;
-    const message = data.error_message
-      ? `${data.status}: ${data.error_message}`
-      : data.status;
-    throw new Error(`Google Places API error: ${message}`);
-  }
+      if (data.status !== "OK") {
+        if (data.status === "NOT_FOUND") return undefined;
+        const message = data.error_message
+          ? `${data.status}: ${data.error_message}`
+          : data.status;
+        throw new Error(`Google Places API error: ${message}`);
+      }
 
-  return parseOpeningHours(data.result?.opening_hours);
+      return parseOpeningHours(data.result?.opening_hours);
+    },
+  );
 }
 
 async function enrichPlaceWithOpeningHours(place: NearbyPlace): Promise<NearbyPlace> {

@@ -170,7 +170,7 @@ router.get("/activity-recommendations", async (req: AuthRequest, res) => {
 
     res.json({
       radius,
-      source: "Google Places live search",
+      source: "Google Places (cached)",
       note: "Recommendations are based on your saved trip locations. Places already in your itinerary are hidden automatically.",
       rows,
     });

@@ -6,13 +6,15 @@ import {
 } from "express";
 import passport from "passport";
 import {
-  getTokenFromRequest,
-  getSessionExpiration,
+  getRefreshTokenFromRequest,
+  getRefreshExpiration,
   signToken,
+  ACCESS_TOKEN_MINUTES,
 } from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { githubOAuthEnabled, googleOAuthEnabled } from "../config/passport.js";
 import { hashPassword, verifyPassword } from "../services/password.js";
+import { generateRefreshToken, hashRefreshToken } from "../services/tokens.js";
 
 const router = Router();
 const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:3000";
@@ -46,16 +48,39 @@ function validatePassword(password: unknown): string | null {
   return password.length >= 8 ? password : null;
 }
 
-async function createAuthSession(userId: string): Promise<string> {
-  const token = signToken(userId);
+interface AuthSession {
+  accessToken: string;
+  refreshToken: string;
+}
+
+async function createAuthSession(userId: string): Promise<AuthSession> {
+  const accessToken = signToken(userId);
+  const refreshToken = generateRefreshToken();
   await prisma.session.create({
     data: {
-      sessionToken: token,
+      refreshTokenHash: hashRefreshToken(refreshToken),
       userId,
-      expires: getSessionExpiration(),
+      expires: getRefreshExpiration(),
     },
   });
-  return token;
+  return { accessToken, refreshToken };
+}
+
+function authResponse(session: AuthSession, user: unknown) {
+  return {
+    token: session.accessToken,
+    refreshToken: session.refreshToken,
+    expiresIn: ACCESS_TOKEN_MINUTES * 60,
+    user,
+  };
+}
+
+function oauthRedirectUrl(session: AuthSession): string {
+  const hash = new URLSearchParams({
+    token: session.accessToken,
+    refresh: session.refreshToken,
+  });
+  return `${FRONTEND_URL}/auth/callback#${hash.toString()}`;
 }
 
 function roleForEmail(email: string): "USER" | "ADMIN" {
@@ -109,8 +134,8 @@ router.post("/signup", async (req: Request, res: Response) => {
       select: { id: true, email: true, name: true, image: true, role: true },
     });
 
-    const token = await createAuthSession(user.id);
-    res.status(201).json({ token, user });
+    const session = await createAuthSession(user.id);
+    res.status(201).json(authResponse(session, user));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to create account" });
@@ -140,17 +165,16 @@ router.post("/login", async (req: Request, res: Response) => {
       return;
     }
 
-    const token = await createAuthSession(user.id);
-    res.json({
-      token,
-      user: {
+    const session = await createAuthSession(user.id);
+    res.json(
+      authResponse(session, {
         id: user.id,
         email: user.email,
         name: user.name,
         image: user.image,
         role: user.role,
-      },
-    });
+      }),
+    );
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to sign in" });
@@ -175,10 +199,8 @@ router.get(
       res.redirect(`${FRONTEND_URL}/login?error=no-user`);
       return;
     }
-    const token = await createAuthSession(req.user.id);
-    res.redirect(
-      `${FRONTEND_URL}/auth/callback?token=${encodeURIComponent(token)}`,
-    );
+    const session = await createAuthSession(req.user.id);
+    res.redirect(oauthRedirectUrl(session));
   },
 );
 
@@ -200,19 +222,56 @@ router.get(
       res.redirect(`${FRONTEND_URL}/login?error=no-user`);
       return;
     }
-    const token = await createAuthSession(req.user.id);
-    res.redirect(
-      `${FRONTEND_URL}/auth/callback?token=${encodeURIComponent(token)}`,
-    );
+    const session = await createAuthSession(req.user.id);
+    res.redirect(oauthRedirectUrl(session));
   },
 );
 
-// Logout (server-side session invalidation)
-router.post("/logout", async (req: Request, res) => {
-  const token = getTokenFromRequest(req);
+// Rotate refresh token and issue a new access JWT
+router.post("/refresh", async (req: Request, res: Response) => {
+  try {
+    const refreshToken = getRefreshTokenFromRequest(req);
+    if (!refreshToken) {
+      res.status(401).json({ error: "Refresh token required" });
+      return;
+    }
 
-  if (token) {
-    await prisma.session.deleteMany({ where: { sessionToken: token } });
+    const existing = await prisma.session.findUnique({
+      where: { refreshTokenHash: hashRefreshToken(refreshToken) },
+      include: {
+        user: {
+          select: { id: true, email: true, name: true, image: true, role: true },
+        },
+      },
+    });
+
+    if (!existing || existing.expires <= new Date() || !existing.user) {
+      if (existing) {
+        await prisma.session
+          .delete({ where: { id: existing.id } })
+          .catch(() => undefined);
+      }
+      res.status(401).json({ error: "Invalid or expired refresh token" });
+      return;
+    }
+
+    const nextSession = await createAuthSession(existing.user.id);
+    await prisma.session.delete({ where: { id: existing.id } }).catch(() => undefined);
+
+    res.json(authResponse(nextSession, existing.user));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed to refresh session" });
+  }
+});
+
+// Logout (revoke this device's refresh session)
+router.post("/logout", async (req: Request, res) => {
+  const refreshToken = getRefreshTokenFromRequest(req);
+  if (refreshToken) {
+    await prisma.session.deleteMany({
+      where: { refreshTokenHash: hashRefreshToken(refreshToken) },
+    });
   }
 
   res.status(200).json({ ok: true });

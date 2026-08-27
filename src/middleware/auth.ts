@@ -2,8 +2,11 @@ import type { Request, Response, NextFunction } from "express";
 import * as jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "change-me-in-production";
-export const SESSION_TIMEOUT_MINUTES = 10;
+const JWT_SECRET = resolveJwtSecret();
+export const ACCESS_TOKEN_MINUTES = 30;
+export const REFRESH_TOKEN_DAYS = 7;
+/** @deprecated Use ACCESS_TOKEN_MINUTES. Kept so older admin clients still compile. */
+export const SESSION_TIMEOUT_MINUTES = ACCESS_TOKEN_MINUTES;
 
 const jwtSign =
   (jwt as any).default?.sign ??
@@ -28,14 +31,32 @@ export interface AuthRequest extends Request {
   user?: AuthUser;
 }
 
+interface AccessTokenPayload {
+  sub: string;
+  typ: "access";
+}
+
+function resolveJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET is not set");
+  }
+  console.warn("JWT_SECRET is not set; using an insecure development default");
+  return "change-me-in-production";
+}
+
 export function signToken(userId: string): string {
-  return jwtSign({ sub: userId }, JWT_SECRET, { expiresIn: "7d" });
+  return jwtSign({ sub: userId, typ: "access" } satisfies AccessTokenPayload, JWT_SECRET, {
+    expiresIn: `${ACCESS_TOKEN_MINUTES}m`,
+  });
 }
 
 export function verifyToken(token: string): { sub: string } | null {
   try {
-    const payload = jwtVerify(token, JWT_SECRET) as { sub: string };
-    return payload;
+    const payload = jwtVerify(token, JWT_SECRET) as AccessTokenPayload;
+    if (payload?.typ !== "access" || typeof payload.sub !== "string") return null;
+    return { sub: payload.sub };
   } catch {
     return null;
   }
@@ -51,11 +72,24 @@ export function getTokenFromRequest(req: Request): string | null {
   );
 }
 
-export function getSessionExpiration(): Date {
-  return new Date(Date.now() + SESSION_TIMEOUT_MINUTES * 60_000);
+export function getRefreshTokenFromRequest(req: Request): string | null {
+  const bodyToken =
+    typeof req.body?.refreshToken === "string" ? req.body.refreshToken : null;
+  const cookieToken =
+    typeof req.cookies?.refresh === "string" ? req.cookies.refresh : null;
+  return bodyToken || cookieToken || null;
 }
 
-/** Attach user to request from Authorization: Bearer <token> or cookie jwt= */
+export function getRefreshExpiration(): Date {
+  return new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60_000);
+}
+
+/** @deprecated Use getRefreshExpiration. */
+export function getSessionExpiration(): Date {
+  return getRefreshExpiration();
+}
+
+/** Attach user from a short-lived access JWT. Does not touch the Session table. */
 export async function requireAuth(
   req: AuthRequest,
   res: Response,
@@ -74,45 +108,17 @@ export async function requireAuth(
     return;
   }
 
-  const session = await prisma.session.findUnique({
-    where: { sessionToken: token },
-    include: {
-      user: {
-        select: { id: true, email: true, name: true, image: true, role: true },
-      },
-    },
+  const user = await prisma.user.findUnique({
+    where: { id: payload.sub },
+    select: { id: true, email: true, name: true, image: true, role: true },
   });
 
-  if (!session || !session.user) {
+  if (!user) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
-  if (session.expires <= new Date()) {
-    await prisma.session
-      .delete({ where: { sessionToken: token } })
-      .catch(() => undefined);
-    res.status(401).json({ error: "Session expired" });
-    return;
-  }
-
-  if (session.user.id !== payload.sub) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-
-  await prisma.session.update({
-    where: { sessionToken: token },
-    data: { expires: getSessionExpiration() },
-  });
-
-  req.user = {
-    id: session.user.id,
-    email: session.user.email,
-    name: session.user.name,
-    image: session.user.image,
-    role: session.user.role,
-  };
+  req.user = user;
   next();
 }
 

@@ -1,5 +1,10 @@
 import { Router } from "express";
-import { requireAdmin, SESSION_TIMEOUT_MINUTES } from "../middleware/auth.js";
+import {
+  requireAdmin,
+  ACCESS_TOKEN_MINUTES,
+  REFRESH_TOKEN_DAYS,
+  SESSION_TIMEOUT_MINUTES,
+} from "../middleware/auth.js";
 import { prisma } from "../lib/prisma.js";
 import { findNearbyHalal, findNearbyMosques, type NearbyPlace } from "../services/places.js";
 
@@ -182,7 +187,7 @@ router.get("/prayer-facilities", async (_req, res) => {
   try {
     const rows = await buildNearbyAdminRows(findNearbyMosques);
     res.json({
-      source: "Google Places live search",
+      source: "Google Places (cached)",
       note: "Prayer facilities are discovered around the 5 most recent saved trip locations and are not stored in the database.",
       rows,
     });
@@ -196,7 +201,7 @@ router.get("/halal-restaurants", async (_req, res) => {
   try {
     const rows = await buildNearbyAdminRows(findNearbyHalal);
     res.json({
-      source: "Google Places live search",
+      source: "Google Places (cached)",
       note: "Halal restaurants are discovered around the 5 most recent saved trip locations and are not stored in the database.",
       rows,
     });
@@ -209,6 +214,8 @@ router.get("/halal-restaurants", async (_req, res) => {
 router.get("/settings", async (_req, res) => {
   res.json({
     sessionTimeoutMinutes: SESSION_TIMEOUT_MINUTES,
+    accessTokenMinutes: ACCESS_TOKEN_MINUTES,
+    refreshTokenDays: REFRESH_TOKEN_DAYS,
     adminEmails: (process.env.ADMIN_EMAILS ?? "admin123@travel.com")
       .split(",")
       .map((email) => email.trim())

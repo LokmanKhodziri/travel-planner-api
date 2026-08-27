@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma.js";
-import { signToken, getSessionExpiration } from "../src/middleware/auth.js";
+import { signToken, getRefreshExpiration } from "../src/middleware/auth.js";
+import { generateRefreshToken, hashRefreshToken } from "../src/services/tokens.js";
 
 async function main() {
   const email = process.env.TEST_USER_EMAIL ?? "dev+test@example.com";
@@ -11,12 +12,13 @@ async function main() {
   }
 
   const token = signToken(user.id);
+  const refreshToken = generateRefreshToken();
 
   await prisma.session.create({
     data: {
-      sessionToken: token,
+      refreshTokenHash: hashRefreshToken(refreshToken),
       userId: user.id,
-      expires: getSessionExpiration(),
+      expires: getRefreshExpiration(),
     },
   });
 
@@ -30,7 +32,7 @@ async function main() {
     },
   });
 
-  console.log(JSON.stringify({ token, tripId: trip.id }));
+  console.log(JSON.stringify({ token, refreshToken, tripId: trip.id }));
 }
 
 main()
