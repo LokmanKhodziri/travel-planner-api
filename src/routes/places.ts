@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
+import { placesSearchLimit } from "../middleware/rate-limit.js";
 import { searchPlaces } from "../services/places.js";
 
 const router = Router();
 router.use(requireAuth);
 
-router.get("/search", async (req: AuthRequest, res) => {
+router.get("/search", placesSearchLimit, async (req: AuthRequest, res) => {
   const input =
     typeof req.query.input === "string" ? req.query.input.trim() : "";
   if (!input) {

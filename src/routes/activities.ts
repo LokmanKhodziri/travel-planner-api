@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
+import { placesLookupLimit } from "../middleware/rate-limit.js";
 import { prisma } from "../lib/prisma.js";
 import { geocodeAddress } from "../services/geocode.js";
 import { getSmartTravelEstimate, parseTravelMode } from "../services/distance-matrix.js";
@@ -116,7 +117,7 @@ router.post("/", async (req: AuthRequest, res) => {
 });
 
 // GET /api/trips/:tripId/activities/travel-times?date=YYYY-MM-DD&mode=driving|transit|walking
-router.get("/travel-times", async (req: AuthRequest, res) => {
+router.get("/travel-times", placesLookupLimit, async (req: AuthRequest, res) => {
   try {
     const tripId = req.params.tripId as string;
     const date = typeof req.query.date === "string" ? req.query.date : null;

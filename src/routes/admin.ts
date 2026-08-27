@@ -5,6 +5,7 @@ import {
   REFRESH_TOKEN_DAYS,
   SESSION_TIMEOUT_MINUTES,
 } from "../middleware/auth.js";
+import { placesLookupLimit, PLACES_LOOKUP_MAX_PER_MINUTE, PLACES_SEARCH_MAX_PER_MINUTE } from "../middleware/rate-limit.js";
 import { prisma } from "../lib/prisma.js";
 import { findNearbyHalal, findNearbyMosques, type NearbyPlace } from "../services/places.js";
 
@@ -183,7 +184,7 @@ router.get("/locations", async (_req, res) => {
   }
 });
 
-router.get("/prayer-facilities", async (_req, res) => {
+router.get("/prayer-facilities", placesLookupLimit, async (_req, res) => {
   try {
     const rows = await buildNearbyAdminRows(findNearbyMosques);
     res.json({
@@ -197,7 +198,7 @@ router.get("/prayer-facilities", async (_req, res) => {
   }
 });
 
-router.get("/halal-restaurants", async (_req, res) => {
+router.get("/halal-restaurants", placesLookupLimit, async (_req, res) => {
   try {
     const rows = await buildNearbyAdminRows(findNearbyHalal);
     res.json({
@@ -216,6 +217,10 @@ router.get("/settings", async (_req, res) => {
     sessionTimeoutMinutes: SESSION_TIMEOUT_MINUTES,
     accessTokenMinutes: ACCESS_TOKEN_MINUTES,
     refreshTokenDays: REFRESH_TOKEN_DAYS,
+    rateLimits: {
+      placesLookupPerMinute: PLACES_LOOKUP_MAX_PER_MINUTE,
+      placesSearchPerMinute: PLACES_SEARCH_MAX_PER_MINUTE,
+    },
     adminEmails: (process.env.ADMIN_EMAILS ?? "admin123@travel.com")
       .split(",")
       .map((email) => email.trim())

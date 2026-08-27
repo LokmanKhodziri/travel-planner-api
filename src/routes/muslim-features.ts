@@ -1,6 +1,7 @@
 import type { Response } from "express";
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
+import { placesLookupLimit } from "../middleware/rate-limit.js";
 import { getOwnedTrip, resolveTripCoordinates } from "../lib/trip-utils.js";
 import { getPrayerTimings } from "../services/aladhan.js";
 import {
@@ -67,7 +68,7 @@ router.get("/prayer-times", async (req: AuthRequest, res) => {
 });
 
 // GET /api/trips/:tripId/nearby/mosques?radius=5000&latitude=&longitude=
-router.get("/nearby/mosques", async (req: AuthRequest, res) => {
+router.get("/nearby/mosques", placesLookupLimit, async (req: AuthRequest, res) => {
   try {
     const context = await getTripCoordsOrError(req, res);
     if (!context) return;
@@ -89,7 +90,7 @@ router.get("/nearby/mosques", async (req: AuthRequest, res) => {
 });
 
 // GET /api/trips/:tripId/nearby/halal?radius=5000
-router.get("/nearby/halal", async (req: AuthRequest, res) => {
+router.get("/nearby/halal", placesLookupLimit, async (req: AuthRequest, res) => {
   try {
     const context = await getTripCoordsOrError(req, res);
     if (!context) return;
@@ -111,7 +112,7 @@ router.get("/nearby/halal", async (req: AuthRequest, res) => {
 });
 
 // GET /api/trips/:tripId/activity-recommendations?radius=5000
-router.get("/activity-recommendations", async (req: AuthRequest, res) => {
+router.get("/activity-recommendations", placesLookupLimit, async (req: AuthRequest, res) => {
   try {
     const tripId = req.params.tripId as string;
     const trip = await getOwnedTrip(tripId, req.user!.id);
